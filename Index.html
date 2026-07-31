@@ -452,6 +452,25 @@
         const homologarClassificacao = async () => { loading.value = true; try { const classificacao = equipesHomologacao.value.map(item => ({ id_equipe: item.id_equipe, colocacao: homologacao.value.posicoes[item.id_equipe], situacao_conclusao: homologacao.value.situacoes[item.id_equipe] || 'CONCLUIDA' })).filter(item => item.colocacao); await call('apiHomologarClassificacao', { id_torneio: contexto.value.torneio?.id_torneio, id_modalidade: homologacao.value.id_modalidade, observacao: homologacao.value.observacao, classificacao }); await carregarRanking(); notify('success', 'Classificação homologada e eficiência recalculada.'); } catch (e) { notify('error', e.message); } finally { loading.value = false; } };
         const reabrirClassificacao = async () => { const motivo = prompt('Informe o motivo obrigatório da reabertura:'); if (!motivo) return; loading.value = true; try { await call('apiReabrirClassificacao', { id_torneio: contexto.value.torneio?.id_torneio, id_modalidade: homologacao.value.id_modalidade, motivo }); await carregarRanking(); notify('success', 'Classificação reaberta com auditoria.'); } catch (e) { notify('error', e.message); } finally { loading.value = false; } };
 
+        const notify = (type, message) => {
+          errorMessage.value = type === 'error' ? message : '';
+          successMessage.value = type === 'success' ? message : '';
+          if (type === 'success') setTimeout(() => { successMessage.value = ''; }, 3500);
+        };
+
+        const call = async (name, ...args) => {
+          const res = await apiCall(name, ...args);
+          if (!res || !res.success) throw new Error(res?.error || 'Não foi possível concluir a operação.');
+          return res.data;
+        };
+
+        const carregarModalidades = async () => {
+          const data = await call('apiGetModalidades');
+          modalidades.value = data.map(item => ({ id: item.id_modalidade, nome: item.nome_modalidade, regra: item.regras_pontos }));
+          if (!modalidadeSelecionada.value && modalidades.value.length) modalidadeSelecionada.value = modalidades.value[0].id;
+          if (!novoInscrito.value.id_modalidade) novoInscrito.value.id_modalidade = modalidadeSelecionada.value;
+        };
+
         // Métodos de Comunicação Backend
         const carregarEquipes = async () => {
           loading.value = true;
