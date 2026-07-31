@@ -87,3 +87,77 @@ A exclusão de equipe é lógica e cancela suas inscrições. Equipes relacionad
 ## 7. Implantação e testes
 
 Consulte `DEPLOY.md` para preparar os ambientes e publicar o WebApp. Antes de uma nova versão, execute `npm test`; os testes usam simuladores locais das APIs do Google Sheets e cobrem regras, schemas, validação, integridade, chaveamento e ranking.
+
+## 8. Regras
+Aqui está a especificação completa e unificada de Regras, Validações e Conceitos de Negócio extraídos do Regulamento de Esportes Campeiros 2025 para o projeto SAE (Sistema Apollo Enterprise).
+________________________________________
+📜 Especificação de Regras de Negócio e Requisitos de Domínio
+Projeto: Sistema de Torneios Campeiros (SAE ERP)
+Documento: Consolidação das Regras Oficiais (Regulamento 2025)
+Objetivo: Orientar a lógica de validação, limites de cadastro e apuração do sistema sem dependência de implementações de código.
+________________________________________
+1. Regras de Filiação e Inscrição Geral
+•	Vínculo Institucional: Todos os participantes e equipes devem estar vinculados a uma Entidade Tradicionalista (CTG) devidamente regularizada junto ao Movimento Tradicionalista Gaúcho (MTG/RS).
+•	Restrição de Representação: Um atleta/competidor só pode pontuar e competir em nome de uma única entidade por torneio.
+________________________________________
+2. Parâmetros de Composição de Equipes por Modalidade
+O sistema de cadastro de inscrições deve validar e travar o número de integrantes por equipe de acordo com os limites de cada modalidade:
+Modalidade Esportiva	Formato de Disputa	Mínimo de Atletas	Máximo de Atletas	Regras de Formação da Equipe
+Tava	Equipe	3	4	Titulares com opção de descarte do pior resultado individual.
+Bocha Campeira	Trio / Quarteto	3	4	Equipe atuante na cancha com limite de substituições.
+Tetarfe	Individual / Equipe	1	4	Participação individual acumulando pontos para o CTG.
+Truco	Trio	3	4	3 titulares ativos e no máximo 1 reserva cadastrado.
+Truco Cego	Trio	3	4	3 titulares ativos e no máximo 1 reserva cadastrado.
+Bocha 48	Dupla ou Trio	2	3	Formação em dupla ou trio cadastrado por ficha.
+________________________________________
+3. Diretrizes e Limites de Pontuação por Partida
+Para o lançamento de súmulas e placares, o sistema deve validar os seguintes critérios e restrições:
+3.1 Tava
+•	Pontuação Base: Somatória dos pontos individuais dos 3 melhores lançadores do trio/equipe (descartando-se a pontuação do 4º integrante, se houver).
+•	Valores das Jogadas:
+o	Sorte Clavada: +2 pontos.
+o	Sorte Corrida: +1 ponto.
+o	Culo Clavado: -2 pontos (desconto/penalidade).
+o	Culo Corrido: -1 ponto (desconto/penalidade).
+•	Validade do Arremesso: A Sorte só é pontuada se a Tava tocar o solo e permanecer dentro dos limites do picador. O Culo é penalizado sempre, independente de onde a Tava tocar.
+•	Critérios de Desempate (Conforme Art. 12):
+1.	Maior quantidade de Sorte Clavada.
+2.	Maior quantidade de Sorte Corrida.
+3.	Menor quantidade de Culo Clavado.
+4.	Menor quantidade de Culo Corrido.
+5.	Rodada extra na cancha com 10 tiros de Tava por jogador (5 em cada cabeceira da cancha).
+3.2 Bocha Campeira
+•	Pontuação Máxima: Partidas disputadas até 12 pontos (set único).
+•	Empate: Não é permitido empate. Havendo igualdade ao término das jogadas regulamentares, disputa-se uma partida/caixa extra de desempate.
+3.3 Bocha 48
+•	Pontuação Máxima: Teto rígido de 48 pontos por partida/dupla.
+•	Empate: Em caso de igualdade de pontuação ao final dos arremessos regulamentares, aplica-se rodada extra de desempate (carambola).
+3.4 Tetarfe
+•	Mecânica: Soma cumulativa de pontos com base nos acertos nos alvos/argolas definidos na regulamentação.
+•	Empate: Havendo empate nas posições de liderança, cada atleta realiza uma série extra de 3 arremessos.
+3.5 Truco e Truco Cego
+•	Pontuação da Partida: Disputada em rodadas (quedas) de até 12 pontos.
+•	Evolução do Mão/Tento: Incrementos de 1, 3, 6, 9 e 12 pontos conforme os pedidos de Truco e reenvios.
+•	Empate: Não existe empate em partidas de Truco (sempre há uma equipe vencedora na queda).
+________________________________________
+4. Conceito da Dupla Estrutura de Ranking
+O sistema gerencia o evento utilizando dois níveis independentes de pontuação:
+Level 1: Pontuação da Modalidade (Nível Competição Interna)
+•	Apuração do resultado direto dos jogos para definir a classificação ordinal dentro do esporte (1º Lugar, 2º Lugar, 3º Lugar, etc.).
+•	Utiliza as regras específicas de cada esporte (saldo de pontos, vitórias, partidas ganhas e critérios de desempate técnicos).
+Level 2: Pontuação do Ranking Geral (Troféu Eficiência)
+•	Apuração unificada do desempenho da entidade tradicionalista (CTG) no evento global.
+•	Ao encerramento de cada modalidade, a classificação final da equipe/atleta gera pontos para a tabela do Campeão Geral:
+Colocação Final na Modalidade	Pontuação Atribuída ao CTG
+1º Lugar (Campeão)	10 Pontos
+2º Lugar (Vice-Campeão)	8 Pontos
+3º Lugar	6 Pontos
+4º Lugar	5 Pontos
+5º Lugar	4 Pontos
+6º Lugar em diante	2 Pontos (Pontuação de participação concluída)
+Critérios de Desempate do Troféu Eficiência (Ranking Geral):
+1.	Maior número de 1ºs Lugares acumulados na competição.
+2.	Maior número de 2ºs Lugares acumulados na competição.
+3.	Maior número de 3ºs Lugares acumulados na competição.
+4.	Análise pela Comissão Organizadora / Sorteio oficial.
+
