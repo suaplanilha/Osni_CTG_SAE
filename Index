@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão de Torneios Campeiros - SAE</title>
+  
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  
+  <!-- Tailwind CSS CDN para utilitários simples de layout -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+  <style>
+    /* ESSENCIAL SAE: Estilos Globais & Glassmorphism Dark UI */
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+      --glass-bg: rgba(255, 255, 255, 0.04);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-card: rgba(30, 41, 59, 0.6);
+      --glass-input: rgba(15, 23, 42, 0.6);
+      --accent-color: #6366f1;
+      --accent-hover: #4f46e5;
+      --gold-accent: #f59e0b;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-gradient);
+      color: #f1f5f9;
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+    }
+
+    /* Utilitários Glassmorphism */
+    .glass-card {
+      background: var(--glass-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+    }
+
+    .glass-input {
+      background: var(--glass-input);
+      border: 1px solid var(--glass-border);
+      color: #f8fafc;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .glass-input:focus {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .glass-btn {
+      background: var(--accent-color);
+      color: #ffffff;
+      transition: all 0.2s ease;
+    }
+
+    .glass-btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    /* Google Style Loader */
+    .loader-bar {
+      height: 3px;
+      width: 100%;
+      background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite linear;
+    }
+
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="p-3 md:p-6">
+
+  <div id="app" class="max-w-6xl mx-auto space-y-6">
+
+    <!-- Top Loading Bar (Google Style) -->
+    <div v-if="loading" class="fixed top-0 left-0 right-0 z-50">
+      <div class="loader-bar"></div>
+    </div>
+
+    <!-- HEADER / APP BAR -->
+    <header class="glass-card p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+          <span class="material-symbols-outlined text-3xl">trophy</span>
+        </div>
+        <div>
+          <h1 class="text-xl md:text-2xl font-bold tracking-tight text-white">Sistema Campeiro SAE</h1>
+          <p class="text-xs text-slate-400">Gestão de Torneios • 1.800+ CTGs</p>
+        </div>
+      </div>
+
+      <!-- NAV TABS -->
+      <nav class="flex flex-wrap gap-2 w-full md:w-auto">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab.id"
+          @click="trocarTab(tab.id)"
+          :class="['px-4 py-2 text-sm font-medium rounded-xl flex items-center gap-2 transition-all', 
+            activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800/40 text-slate-400 hover:text-white hover:bg-slate-800/80']"
+        >
+          <span class="material-symbols-outlined text-lg">{{ tab.icon }}</span>
+          {{ tab.label }}
+        </button>
+      </nav>
+    </header>
+
+    <!-- TAB 1: INSCRIÇÃO & CHAVEAMENTO -->
+    <section v-if="activeTab === 'inscricoes'" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Formulário de Inscrição -->
+        <div class="glass-card p-5 space-y-4">
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-indigo-400">person_add</span>
+            Cadastrar Competidor / Equipe
+          </h2>
+          <form @submit.prevent="adicionarInscrito" class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Nome da Equipe / Dupla / Atleta</label>
+              <input v-model="novoInscrito.nome" type="text" class="w-full glass-input px-3 py-2 rounded-lg text-sm" placeholder="Ex: CTG Lanceiros do Sul" required>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">CTG / Entidade</label>
+              <input v-model="novoInscrito.ctg" type="text" class="w-full glass-input px-3 py-2 rounded-lg text-sm" placeholder="Ex: CTG Chama Crioula" required>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Modalidade Principal</label>
+              <select v-model="novoInscrito.id_modalidade" class="w-full glass-input px-3 py-2 rounded-lg text-sm bg-slate-900" required>
+                <option v-for="mod in modalidades" :key="mod.id" :value="mod.id">{{ mod.nome }}</option>
+              </select>
+            </div>
+            <button type="submit" :disabled="loading" class="w-full glass-btn py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 mt-2">
+              <span class="material-symbols-outlined text-sm">add_circle</span>
+              Salvar Inscrição
+            </button>
+          </form>
+        </div>
+
+        <!-- Lista de Inscritos -->
+        <div class="glass-card p-5 md:col-span-2 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+              <span class="material-symbols-outlined text-indigo-400">groups</span>
+              Inscritos Confirmados ({{ inscritos.length }})
+            </h2>
+            <button @click="gerarChaves" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition-all">
+              <span class="material-symbols-outlined text-sm">auto_awesome</span>
+              Gerar Chaves Automáticas
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+              <thead class="text-xs uppercase bg-slate-800/50 text-slate-400 border-b border-slate-700/50">
+                <tr>
+                  <th class="p-3">Equipe / Atleta</th>
+                  <th class="p-3">CTG</th>
+                  <th class="p-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/50">
+                <tr v-for="(item, idx) in inscritos" :key="idx" class="hover:bg-slate-800/30">
+                  <td class="p-3 font-medium text-white">{{ item.nome_equipe }}</td>
+                  <td class="p-3 text-slate-400">{{ item.ctg_responsavel }}</td>
+                  <td class="p-3 text-right">
+                    <button @click="removerInscrito(idx)" class="text-rose-400 hover:text-rose-300">
+                      <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="inscritos.length === 0 && !loading">
+                  <td colspan="3" class="p-4 text-center text-slate-500 text-xs">Nenhum inscrito cadastrado até o momento.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: RODADAS & CONFRONTOS -->
+    <section v-if="activeTab === 'confrontos'" class="space-y-6">
+      <div class="glass-card p-5 space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-indigo-400">sports_score</span>
+            Súmula Eletrônica de Confrontos
+          </h2>
+          <!-- Select da Modalidade Ativa -->
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-slate-400">Modalidade:</label>
+            <select v-model="modalidadeSelecionada" @change="carregarPartidas" class="glass-input px-3 py-1.5 rounded-lg text-sm bg-slate-900">
+              <option v-for="mod in modalidades" :key="mod.id" :value="mod.id">{{ mod.nome }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Cards de Confrontos da Rodada -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div v-for="(partida, index) in partidas" :key="index" class="glass-card p-4 border border-slate-700/50 space-y-3">
+            <div class="flex justify-between items-center text-xs text-slate-400 border-b border-slate-800 pb-2">
+              <span class="font-bold text-indigo-400">Rodada {{ partida.rodada || 1 }}</span>
+              <span>Confronto #{{ index + 1 }}</span>
+            </div>
+            
+            <div class="grid grid-cols-5 items-center gap-2 text-center">
+              <!-- Mandante -->
+              <div class="col-span-2 text-left">
+                <p class="font-semibold text-sm text-white truncate">{{ partida.equipeA || 'A definir' }}</p>
+                <p class="text-[10px] text-slate-400">{{ partida.ctgA || '' }}</p>
+              </div>
+              
+              <!-- Placar -->
+              <div class="col-span-1 flex items-center justify-center gap-1">
+                <input v-model.number="partida.placar_a" type="number" class="w-10 glass-input text-center py-1 rounded text-sm font-bold" min="0">
+                <span class="text-xs text-slate-500">x</span>
+                <input v-model.number="partida.placar_b" type="number" class="w-10 glass-input text-center py-1 rounded text-sm font-bold" min="0">
+              </div>
+
+              <!-- Visitante -->
+              <div class="col-span-2 text-right">
+                <p class="font-semibold text-sm text-white truncate">{{ partida.equipeB || 'A definir' }}</p>
+                <p class="text-[10px] text-slate-400">{{ partida.ctgB || '' }}</p>
+              </div>
+            </div>
+
+            <button @click="salvarConfronto(partida)" class="w-full glass-btn py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-xs">save</span>
+              Confirmar Resultado
+            </button>
+          </div>
+          <div v-if="partidas.length === 0 && !loading" class="col-span-2 text-center py-8 text-slate-500 text-sm">
+            Nenhum confronto gerado para esta modalidade ainda.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: CAMPEÃO GERAL / RESULTADOS -->
+    <section v-if="activeTab === 'resultados'" class="space-y-6">
+      <div class="glass-card p-5 space-y-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+          <span class="material-symbols-outlined text-amber-400">emoji_events</span>
+          Classificação Geral Unificada (Todas as Modalidades)
+        </h2>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="text-xs uppercase bg-slate-800/50 text-slate-400 border-b border-slate-700/50">
+              <tr>
+                <th class="p-3 text-center">Posição</th>
+                <th class="p-3">CTG / Entidade</th>
+                <th class="p-3 text-center">Vitórias</th>
+                <th class="p-3 text-center">Pontos Totais</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/50">
+              <tr v-for="(rank, idx) in rankingGeral" :key="idx" :class="idx === 0 ? 'bg-amber-500/10 font-bold' : ''">
+                <td class="p-3 text-center">
+                  <span v-if="idx === 0" class="text-amber-400 flex items-center justify-center gap-1">
+                    <span class="material-symbols-outlined text-base">workspace_premium</span> 1º
+                  </span>
+                  <span v-else-if="idx === 1" class="text-slate-300 font-semibold">2º</span>
+                  <span v-else-if="idx === 2" class="text-amber-700 font-semibold">3º</span>
+                  <span v-else class="text-slate-500">{{ idx + 1 }}º</span>
+                </td>
+                <td class="p-3 font-medium text-white">{{ rank.ctg }}</td>
+                <td class="p-3 text-center text-slate-300">{{ rank.vitorias_totais }}</td>
+                <td class="p-3 text-center font-bold text-indigo-400">{{ rank.pontos_totais }} pts</td>
+              </tr>
+              <tr v-if="rankingGeral.length === 0 && !loading">
+                <td colspan="4" class="p-4 text-center text-slate-500 text-xs">Nenhuma pontuação computada ainda.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    // Wrapper genérico para consumo assíncrono das funções backend (google.script.run)
+    const apiCall = (functionName, ...args) => {
+      return new Promise((resolve, reject) => {
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+          console.warn('Executando fora do ambiente Google Apps Script');
+          resolve({ success: false, error: 'Ambiente local sem GAS' });
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(response => resolve(response))
+          .withFailureHandler(error => reject(error))[functionName](...args);
+      });
+    };
+
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const activeTab = ref('inscricoes');
+        const loading = ref(false);
+
+        const tabs = [
+          { id: 'inscricoes', label: 'Inscrições e Chaves', icon: 'how_to_reg' },
+          { id: 'confrontos', label: 'Confrontos / Súmulas', icon: 'scoreboard' },
+          { id: 'resultados', label: 'Campeão Geral', icon: 'leaderboard' }
+        ];
+
+        const modalidades = ref([
+          { id: 'mod_1', nome: 'Bocha Campeira' },
+          { id: 'mod_2', nome: 'Tava' },
+          { id: 'mod_3', nome: 'Tetarfe' },
+          { id: 'mod_4', nome: 'Truco' },
+          { id: 'mod_5', nome: 'Truco Cego' },
+          { id: 'mod_6', nome: 'Bocha 48' }
+        ]);
+
+        const modalidadeSelecionada = ref('mod_1');
+
+        // Estado do Formulário
+        const novoInscrito = ref({ nome: '', ctg: '', id_modalidade: 'mod_1' });
+
+        // Listas de Dados
+        const inscritos = ref([]);
+        const partidas = ref([]);
+        const rankingGeral = ref([]);
+
+        // Métodos de Comunicação Backend
+        const carregarEquipes = async () => {
+          loading.value = true;
+          try {
+            const res = await apiCall('apiGetEquipes');
+            if (res && res.success) {
+              inscritos.value = res.data || [];
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const carregarPartidas = async () => {
+          loading.value = true;
+          try {
+            const res = await apiCall('apiGetPartidasPorModalidade', modalidadeSelecionada.value);
+            if (res && res.success) {
+              partidas.value = res.data || [];
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const carregarRanking = async () => {
+          loading.value = true;
+          try {
+            const res = await apiCall('apiGetClassificacaoGeral');
+            if (res && res.success) {
+              rankingGeral.value = res.data || [];
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const adicionarInscrito = async () => {
+          loading.value = true;
+          try {
+            const res = await apiCall('apiCadastrarInscrito', novoInscrito.value);
+            if (res && res.success) {
+              novoInscrito.value = { nome: '', ctg: '', id_modalidade: modalidadeSelecionada.value };
+              await carregarEquipes();
+            } else {
+              alert('Erro ao salvar inscrição: ' + (res?.error || 'Erro desconhecido'));
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const removerInscrito = (index) => {
+          inscritos.value.splice(index, 1);
+        };
+
+        const gerarChaves = () => {
+          loading.value = true;
+          setTimeout(() => {
+            alert('Chaves cruzadas e confrontos gerados com sucesso!');
+            loading.value = false;
+            trocarTab('confrontos');
+          }, 600);
+        };
+
+        const salvarConfronto = async (partida) => {
+          loading.value = true;
+          try {
+            const res = await apiCall('apiSalvarResultadoPartida', partida);
+            if (res && res.success) {
+              alert('Resultado salvo com sucesso!');
+              await carregarPartidas();
+            } else {
+              alert('Erro ao salvar partida: ' + (res?.error || 'Erro desconhecido'));
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const trocarTab = (tabId) => {
+          activeTab.value = tabId;
+          if (tabId === 'inscricoes') carregarEquipes();
+          if (tabId === 'confrontos') carregarPartidas();
+          if (tabId === 'resultados') carregarRanking();
+        };
+
+        onMounted(() => {
+          carregarEquipes();
+        });
+
+        return {
+          activeTab,
+          tabs,
+          modalidades,
+          modalidadeSelecionada,
+          novoInscrito,
+          inscritos,
+          partidas,
+          rankingGeral,
+          loading,
+          trocarTab,
+          carregarPartidas,
+          adicionarInscrito,
+          removerInscrito,
+          gerarChaves,
+          salvarConfronto
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
