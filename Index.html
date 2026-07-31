@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="manifest" href="?asset=manifest">
   <title>Gestão de Torneios Campeiros - SAE</title>
   
   <!-- Vue 3 CDN -->
@@ -106,6 +108,11 @@
       <div class="loader-bar"></div>
     </div>
 
+    <div v-if="errorMessage" role="alert" class="glass-card border-rose-500/40 bg-rose-950/50 p-3 flex items-center justify-between gap-3 text-sm text-rose-100">
+      <span>{{ errorMessage }}</span><button @click="errorMessage = ''" aria-label="Fechar erro" class="text-rose-300">×</button>
+    </div>
+    <div v-if="successMessage" role="status" class="glass-card border-emerald-500/40 bg-emerald-950/50 p-3 text-sm text-emerald-100">{{ successMessage }}</div>
+
     <!-- HEADER / APP BAR -->
     <header class="glass-card p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-3">
@@ -149,6 +156,10 @@
               <input v-model="novoInscrito.nome" type="text" class="w-full glass-input px-3 py-2 rounded-lg text-sm" placeholder="Ex: CTG Lanceiros do Sul" required>
             </div>
             <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Contato (opcional)</label>
+              <input v-model="novoInscrito.contato" type="text" maxlength="120" class="w-full glass-input px-3 py-2 rounded-lg text-sm" placeholder="Telefone ou e-mail">
+            </div>
+            <div>
               <label class="block text-xs font-medium text-slate-400 mb-1">CTG / Entidade</label>
               <input v-model="novoInscrito.ctg" type="text" class="w-full glass-input px-3 py-2 rounded-lg text-sm" placeholder="Ex: CTG Chama Crioula" required>
             </div>
@@ -167,15 +178,19 @@
 
         <!-- Lista de Inscritos -->
         <div class="glass-card p-5 md:col-span-2 space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 class="text-lg font-semibold text-white flex items-center gap-2">
               <span class="material-symbols-outlined text-indigo-400">groups</span>
               Inscritos Confirmados ({{ inscritos.length }})
             </h2>
-            <button @click="gerarChaves" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition-all">
-              <span class="material-symbols-outlined text-sm">auto_awesome</span>
-              Gerar Chaves Automáticas
-            </button>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <select v-model="modalidadeSelecionada" aria-label="Modalidade do chaveamento" class="glass-input px-3 py-1.5 rounded-lg text-xs bg-slate-900">
+                <option v-for="mod in modalidades" :key="mod.id" :value="mod.id">{{ mod.nome }}</option>
+              </select>
+              <button @click="gerarChaves" :disabled="loading || !modalidadeSelecionada" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-all">
+                <span class="material-symbols-outlined text-sm">auto_awesome</span> Gerar Chaves
+              </button>
+            </div>
           </div>
 
           <div class="overflow-x-auto">
@@ -192,11 +207,12 @@
                   <td class="p-3 font-medium text-white">{{ item.nome_equipe }}</td>
                   <td class="p-3 text-slate-400">{{ item.ctg_responsavel }}</td>
                   <td class="p-3 text-right">
-                    <button @click="removerInscrito(idx)" class="text-rose-400 hover:text-rose-300">
+                    <button @click="removerInscrito(item)" :disabled="loading" :aria-label="'Remover ' + item.nome_equipe" class="text-rose-400 hover:text-rose-300 disabled:opacity-40">
                       <span class="material-symbols-outlined text-sm">delete</span>
                     </button>
                   </td>
                 </tr>
+                <tr v-if="loading && inscritos.length === 0" v-for="n in 3" :key="'skeleton-' + n" class="animate-pulse"><td colspan="3" class="p-3"><div class="h-5 rounded bg-slate-700/50"></div></td></tr>
                 <tr v-if="inscritos.length === 0 && !loading">
                   <td colspan="3" class="p-4 text-center text-slate-500 text-xs">Nenhum inscrito cadastrado até o momento.</td>
                 </tr>
@@ -254,7 +270,7 @@
               </div>
             </div>
 
-            <button @click="salvarConfronto(partida)" class="w-full glass-btn py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
+            <button @click="salvarConfronto(partida)" :disabled="loading || partida.status_partida === 'FINALIZADO'" class="w-full glass-btn disabled:opacity-40 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
               <span class="material-symbols-outlined text-xs">save</span>
               Confirmar Resultado
             </button>
@@ -337,35 +353,45 @@
           { id: 'resultados', label: 'Campeão Geral', icon: 'leaderboard' }
         ];
 
-        const modalidades = ref([
-          { id: 'mod_1', nome: 'Bocha Campeira' },
-          { id: 'mod_2', nome: 'Tava' },
-          { id: 'mod_3', nome: 'Tetarfe' },
-          { id: 'mod_4', nome: 'Truco' },
-          { id: 'mod_5', nome: 'Truco Cego' },
-          { id: 'mod_6', nome: 'Bocha 48' }
-        ]);
-
-        const modalidadeSelecionada = ref('mod_1');
+        const modalidades = ref([]);
+        const modalidadeSelecionada = ref('');
 
         // Estado do Formulário
-        const novoInscrito = ref({ nome: '', ctg: '', id_modalidade: 'mod_1' });
+        const novoInscrito = ref({ nome: '', ctg: '', contato: '', id_modalidade: '' });
+        const errorMessage = ref('');
+        const successMessage = ref('');
 
         // Listas de Dados
         const inscritos = ref([]);
         const partidas = ref([]);
         const rankingGeral = ref([]);
 
+        const notify = (type, message) => {
+          errorMessage.value = type === 'error' ? message : '';
+          successMessage.value = type === 'success' ? message : '';
+          if (type === 'success') setTimeout(() => { successMessage.value = ''; }, 3500);
+        };
+
+        const call = async (name, ...args) => {
+          const res = await apiCall(name, ...args);
+          if (!res || !res.success) throw new Error(res?.error || 'Não foi possível concluir a operação.');
+          return res.data;
+        };
+
+        const carregarModalidades = async () => {
+          const data = await call('apiGetModalidades');
+          modalidades.value = data.map(item => ({ id: item.id_modalidade, nome: item.nome_modalidade, regra: item.regras_pontos }));
+          if (!modalidadeSelecionada.value && modalidades.value.length) modalidadeSelecionada.value = modalidades.value[0].id;
+          if (!novoInscrito.value.id_modalidade) novoInscrito.value.id_modalidade = modalidadeSelecionada.value;
+        };
+
         // Métodos de Comunicação Backend
         const carregarEquipes = async () => {
           loading.value = true;
           try {
-            const res = await apiCall('apiGetEquipes');
-            if (res && res.success) {
-              inscritos.value = res.data || [];
-            }
+            inscritos.value = await call('apiGetEquipes') || [];
           } catch (e) {
-            console.error(e);
+            notify('error', e.message);
           } finally {
             loading.value = false;
           }
@@ -374,12 +400,9 @@
         const carregarPartidas = async () => {
           loading.value = true;
           try {
-            const res = await apiCall('apiGetPartidasPorModalidade', modalidadeSelecionada.value);
-            if (res && res.success) {
-              partidas.value = res.data || [];
-            }
+            partidas.value = await call('apiGetPartidasPorModalidade', modalidadeSelecionada.value) || [];
           } catch (e) {
-            console.error(e);
+            notify('error', e.message);
           } finally {
             loading.value = false;
           }
@@ -388,12 +411,9 @@
         const carregarRanking = async () => {
           loading.value = true;
           try {
-            const res = await apiCall('apiGetClassificacaoGeral');
-            if (res && res.success) {
-              rankingGeral.value = res.data || [];
-            }
+            rankingGeral.value = await call('apiGetClassificacaoGeral') || [];
           } catch (e) {
-            console.error(e);
+            notify('error', e.message);
           } finally {
             loading.value = false;
           }
@@ -402,59 +422,61 @@
         const adicionarInscrito = async () => {
           loading.value = true;
           try {
-            const res = await apiCall('apiCadastrarInscrito', novoInscrito.value);
-            if (res && res.success) {
-              novoInscrito.value = { nome: '', ctg: '', id_modalidade: modalidadeSelecionada.value };
-              await carregarEquipes();
-            } else {
-              alert('Erro ao salvar inscrição: ' + (res?.error || 'Erro desconhecido'));
-            }
+            await call('apiCadastrarInscrito', novoInscrito.value);
+            novoInscrito.value = { nome: '', ctg: '', contato: '', id_modalidade: modalidadeSelecionada.value };
+            notify('success', 'Inscrição salva com sucesso.');
+            await carregarEquipes();
           } catch (e) {
-            console.error(e);
+            notify('error', e.message);
           } finally {
             loading.value = false;
           }
         };
 
-        const removerInscrito = (index) => {
-          inscritos.value.splice(index, 1);
+        const removerInscrito = async (item) => {
+          if (!confirm(`Remover a inscrição de ${item.nome_equipe}?`)) return;
+          loading.value = true;
+          try { await call('apiExcluirInscrito', item.id_equipe); notify('success', 'Inscrição removida.'); await carregarEquipes(); }
+          catch (e) { notify('error', e.message); }
+          finally { loading.value = false; }
         };
 
-        const gerarChaves = () => {
+        const gerarChaves = async () => {
           loading.value = true;
-          setTimeout(() => {
-            alert('Chaves cruzadas e confrontos gerados com sucesso!');
-            loading.value = false;
-            trocarTab('confrontos');
-          }, 600);
+          try {
+            const result = await call('apiGerarChaves', modalidadeSelecionada.value);
+            notify('success', `${result.partidas_criadas} confronto(s) gerado(s).`);
+            await trocarTab('confrontos');
+          } catch (e) { notify('error', e.message); }
+          finally { loading.value = false; }
         };
 
         const salvarConfronto = async (partida) => {
           loading.value = true;
           try {
-            const res = await apiCall('apiSalvarResultadoPartida', partida);
-            if (res && res.success) {
-              alert('Resultado salvo com sucesso!');
-              await carregarPartidas();
-            } else {
-              alert('Erro ao salvar partida: ' + (res?.error || 'Erro desconhecido'));
-            }
+            await call('apiSalvarResultadoPartida', partida);
+            notify('success', 'Resultado salvo e ranking recalculado.');
+            await carregarPartidas();
           } catch (e) {
-            console.error(e);
+            notify('error', e.message);
           } finally {
             loading.value = false;
           }
         };
 
-        const trocarTab = (tabId) => {
+        const trocarTab = async (tabId) => {
           activeTab.value = tabId;
-          if (tabId === 'inscricoes') carregarEquipes();
-          if (tabId === 'confrontos') carregarPartidas();
-          if (tabId === 'resultados') carregarRanking();
+          if (tabId === 'inscricoes') await carregarEquipes();
+          if (tabId === 'confrontos') await carregarPartidas();
+          if (tabId === 'resultados') await carregarRanking();
         };
 
-        onMounted(() => {
-          carregarEquipes();
+        onMounted(async () => {
+          loading.value = true;
+          try { await carregarModalidades(); await carregarEquipes(); }
+          catch (e) { notify('error', e.message); }
+          finally { loading.value = false; }
+          if ('serviceWorker' in navigator) navigator.serviceWorker.register('?asset=sw').catch(() => console.info('Service Worker indisponível neste modo de implantação.'));
         });
 
         return {
@@ -467,6 +489,8 @@
           partidas,
           rankingGeral,
           loading,
+          errorMessage,
+          successMessage,
           trocarTab,
           carregarPartidas,
           adicionarInscrito,
