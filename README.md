@@ -3,7 +3,7 @@ ________________________________________
 📄 Documentação Técnica do Projeto: Sistema de Torneios Campeiros (SAE ERP)
 Versão: 1.0 (MVP)
 Padrão de Arquitetura: SAE (Sistema Apollo Enterprise)
-Status Atual: Protótipo Funcional e Estrutura de Banco de Dados Concluídos
+Status Atual: MVP funcional para homologação
 ________________________________________
 1. Visão Geral do Projeto
 1.1 Objetivo
@@ -28,9 +28,9 @@ ________________________________________
                    ▼
 [ Banco de Dados: Google Sheets (ctg_db) ]
 2.1 Stack Tecnológica Mandatória
-•	Frontend: Vue 3 (CDN), HTML5 Single-File, Tailwind CSS (CDN), Google Material Symbols.
+•	Frontend: Vue 3 (CDN), HTML5 Single-File, Tailwind CSS (CDN), Google Material Symbols e PWA progressiva.
 •	UI/UX: Glassmorphism Dark UI (Padrão SAE), Mobile-First, Skeleton/Loader tipo Google.
-•	Backend: Google Apps Script (GAS) em Runtime V8 (Código.gs, Database.gs, SetupDB.js).
+•	Backend: Google Apps Script (GAS) em Runtime V8 (`codigo.gs`, `Database.gs`, `SetupDB.gs` e `Modalidades.gs`).
 •	Banco de Dados: Google Sheets (1 Aba = 1 Entidade, UUIDs v4, Datas ISO 8601).
 ________________________________________
 3. Modelo de Dados (Google Sheets - ctg_db)
@@ -71,8 +71,19 @@ ________________________________________
 •	Cadastro de equipes com associação de CTG.
 •	Lançamento de placares com recálculo automático do Campeão Geral.
 ⏳ Pendente / Próximas Etapas (Roadmap)
-•	Algoritmo Dinâmico de Chaveamento: Lógica para gerar confrontos automáticos (1x1 ou chaveamento por eliminação/grupos) com base na quantidade de inscritos.
+•	Evoluir o chaveamento eliminatório inicial para múltiplas rodadas e formatos por grupos.
 •	Impressão de Súmulas/Exportação em PDF: Função para gerar relatório/súmula em PDF caso a organização do torneio necessite de cópia física.
 •	Validações específicas por esporte: Aplicar regras particulares de placar máximo para cada modalidade (ex: limite de pontos na Bocha 48 ou regras de vazas no Truco).
 •	Filtros e Busca: Adicionar campo de pesquisa rápida nas tabelas de inscritos e partidas.
 
+## 6. Regras funcionais do MVP
+
+As modalidades são definidas exclusivamente em `Modalidades.gs`, com IDs estáveis, limites de placar e política de empate. Tava aceita 0–12, Bocha Campeira 0–12 sem empate, Tetarfe 0–20, Truco e Truco Cego 0–2 sem empate e Bocha 48 aceita 0–48. O backend sempre valida essas regras antes de finalizar uma partida.
+
+O chaveamento do MVP sorteia os inscritos confirmados e cria confrontos persistentes da primeira rodada. Com quantidade ímpar, uma equipe recebe passagem automática (`bye`). Uma chave existente não pode ser recriada acidentalmente.
+
+A exclusão de equipe é lógica e cancela suas inscrições. Equipes relacionadas a partidas ativas não podem ser excluídas, preservando o histórico e a integridade referencial. O ranking soma os placares por CTG e usa vitórias e nome do CTG como critérios de desempate.
+
+## 7. Implantação e testes
+
+Consulte `DEPLOY.md` para preparar os ambientes e publicar o WebApp. Antes de uma nova versão, execute `npm test`; os testes usam simuladores locais das APIs do Google Sheets e cobrem regras, schemas, validação, integridade, chaveamento e ranking.

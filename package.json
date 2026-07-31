@@ -1,0 +1,5 @@
+{
+  "name": "sae-torneios-campeiros",
+  "private": true,
+  "scripts": { "test": "node tests/run-tests.js", "check": "node --check tests/run-tests.js" }
+}

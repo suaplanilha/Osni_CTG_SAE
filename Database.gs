@@ -1,104 +1,64 @@
+/** Persistência genérica para Google Sheets com operações internas transacionais. */
+function getSchema_(entityName) {
+  const schema = Object.values(DB_SCHEMAS).find(item => item.name === entityName);
+  if (!schema) throw new Error(`Entidade ${entityName} não permitida.`);
+  return schema;
+}
 
-/**
- * MOTOR DE BANCO DE DADOS - PADRÃO SAE
- * Operações CRUD Genéricas com suporte a LockService (Anti-Concorrência)
- */
+function getSheet_(entityName) {
+  getSchema_(entityName);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(entityName);
+  if (!sheet) throw new Error(`Entidade ${entityName} não encontrada. Execute initDatabase().`);
+  return sheet;
+}
 
-/**
- * Lê todos os registros de uma entidade e os converte em Array de Objetos JSON.
- */
-function dbRead(entityName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(entityName);
-  
-  if (!sheet) throw new Error(`Entidade ${entityName} não encontrada no banco.`);
-  
+function dbRead(entityName, includeInactive) {
+  const sheet = getSheet_(entityName);
   const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return []; // Somente cabeçalho ou vazia
-  
+  if (data.length <= 1) return [];
   const headers = data[0];
-  const rows = data.slice(1);
-  
-  return rows.map(row => {
-    let item = {};
-    headers.forEach((header, index) => {
-      item[header] = row[index];
-    });
+  return data.slice(1).filter(row => row.some(value => value !== '')).map(row => {
+    const item = {};
+    headers.forEach((header, index) => { if (header) item[header] = row[index]; });
     return item;
-  });
+  }).filter(item => includeInactive || !Object.prototype.hasOwnProperty.call(item, 'ativo') || normalizeBoolean_(item.ativo));
 }
 
-/**
- * Insere um novo registro na entidade com Lock de Concorrência
- */
+function withDatabaseLock_(callback) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return callback(); } finally { lock.releaseLock(); }
+}
+
 function dbInsert(entityName, recordObject) {
-  const lock = LockService.getScriptLock();
-  
-  try {
-    // Aguarda até 10 segundos para obter acesso exclusivo
-    lock.waitLock(10000); 
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(entityName);
-    
-    const headers = DB_SCHEMAS[entityName.replace('tb_', '').toUpperCase()].headers;
-    
-    // Garante ID e Data de Criação se for o caso
-    if (headers.includes('id_' + entityName.replace('tb_', '').slice(0, -1)) && !recordObject[headers[0]]) {
-      recordObject[headers[0]] = generateUUID();
-    }
-    
-    const newRow = headers.map(header => {
-      return recordObject[header] !== undefined ? recordObject[header] : '';
-    });
-    
-    sheet.appendRow(newRow);
-    return { success: true, data: recordObject };
-    
-  } catch (error) {
-    Logger.log(`Erro de Concorrência/Gravação: ${error.toString()}`);
-    return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
-  }
+  try { return withDatabaseLock_(() => dbInsertUnsafe_(entityName, recordObject)); }
+  catch (error) { return { success: false, error: error.message || String(error) }; }
 }
 
-/**
- * Atualiza um registro existente com base no seu ID primário
- */
-function dbUpdate(entityName, primaryKeyName, primaryKeyValue, updatedFields) {
-  const lock = LockService.getScriptLock();
-  
-  try {
-    lock.waitLock(10000);
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(entityName);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    
-    const keyIndex = headers.indexOf(primaryKeyName);
-    if (keyIndex === -1) throw new Error(`Chave primária ${primaryKeyName} não encontrada.`);
-    
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][keyIndex] === primaryKeyValue) {
-        
-        // Atualiza apenas os campos passados
-        headers.forEach((header, colIndex) => {
-          if (updatedFields[header] !== undefined) {
-            sheet.getRange(i + 1, colIndex + 1).setValue(updatedFields[header]);
-          }
-        });
-        
-        return { success: true };
-      }
-    }
-    
-    return { success: false, error: 'Registro não encontrado.' };
-    
-  } catch (error) {
-    return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
-  }
+function dbInsertUnsafe_(entityName, recordObject) {
+  const sheet = getSheet_(entityName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  sheet.appendRow(headers.map(header => recordObject[header] === undefined ? '' : recordObject[header]));
+  return { success: true, data: recordObject };
 }
+
+function dbUpdate(entityName, primaryKeyName, primaryKeyValue, updatedFields) {
+  try { return withDatabaseLock_(() => dbUpdateUnsafe_(entityName, primaryKeyName, primaryKeyValue, updatedFields)); }
+  catch (error) { return { success: false, error: error.message || String(error) }; }
+}
+
+function dbUpdateUnsafe_(entityName, primaryKeyName, primaryKeyValue, updatedFields) {
+  const sheet = getSheet_(entityName);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const keyIndex = headers.indexOf(primaryKeyName);
+  if (keyIndex < 0) throw new Error(`Chave primária ${primaryKeyName} não encontrada.`);
+  const rowIndex = data.findIndex((row, index) => index > 0 && String(row[keyIndex]) === String(primaryKeyValue));
+  if (rowIndex < 0) return { success: false, error: 'Registro não encontrado.' };
+  const row = data[rowIndex].slice();
+  headers.forEach((header, col) => { if (updatedFields[header] !== undefined) row[col] = updatedFields[header]; });
+  sheet.getRange(rowIndex + 1, 1, 1, headers.length).setValues([row]);
+  return { success: true };
+}
+
+function normalizeBoolean_(value) { return value === true || String(value).toLowerCase() === 'true' || value === 1; }
