@@ -1,170 +1,109 @@
-/**
- * CONTROLLER PRINCIPAL / ENDPOINTS DA API (PADRÃO SAE)
- */
-
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Sistema de Torneios Campeiros - SAE')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
-}
-
-/* ==========================================================================
-   1. ENDPOINTS DE EQUIPES E INSCRIÇÕES
-   ========================================================================== */
-
-/**
- * Retorna a lista de todas as equipes cadastradas.
- */
-function apiGetEquipes() {
-  try {
-    const dados = dbRead('tb_equipes');
-    return { success: true, data: dados };
-  } catch (error) {
-    return { success: false, error: error.message };
+/** Controller público do WebApp SAE. */
+function doGet(e) {
+  const asset = e && e.parameter && e.parameter.asset;
+  if (asset === 'manifest') {
+    return ContentService.createTextOutput(JSON.stringify({
+      name: 'SAE · CTG Rodeio dos Palmares', short_name: 'SAE Palmares', start_url: '?source=pwa#/inscricoes',
+      display: 'standalone', background_color: '#0f172a', theme_color: '#4f46e5', lang: 'pt-BR',
+      icons: [{ src: 'https://fonts.gstatic.com/s/i/materialiconsoutlined/emoji_events/v12/24px.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
+    })).setMimeType(ContentService.MimeType.JSON);
   }
+  if (asset === 'sw') {
+    return ContentService.createTextOutput("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.method==='GET')e.respondWith(fetch(e.request).catch(()=>new Response('Offline',{status:503})));});")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return HtmlService.createHtmlOutputFromFile('Index').setTitle('SAE - CTG Rodeio dos Palmares')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/**
- * Cadastra uma nova equipe e realiza sua inscrição inicial.
- */
+function apiGetModalidades() {
+  return apiResponse_(() => MODALIDADES.map(item => Object.assign({}, item)));
+}
+
+function apiGetEquipes() { return apiResponse_(() => dbRead('tb_equipes')); }
+
 function apiCadastrarInscrito(payload) {
-  try {
-    // 1. Insere a Equipe na tb_equipes
-    const novaEquipe = {
-      id_equipe: generateUUID(),
-      nome_equipe: payload.nome,
-      ctg_responsavel: payload.ctg,
-      contato: payload.contato || '',
-      data_criacao: getISODate(),
-      ativo: true
-    };
-    
-    const resEquipe = dbInsert('tb_equipes', novaEquipe);
-    if (!resEquipe.success) throw new Error(resEquipe.error);
-
-    // 2. Insere a Inscrição na tb_inscricoes
-    const novaInscricao = {
-      id_inscricao: generateUUID(),
-      id_equipe: novaEquipe.id_equipe,
-      id_modalidade: payload.id_modalidade,
-      status: 'CONFIRMADO',
-      data_inscricao: getISODate()
-    };
-    
-    const resInscricao = dbInsert('tb_inscricoes', novaInscricao);
-    if (!resInscricao.success) throw new Error(resInscricao.error);
-
-    return { success: true, data: novaEquipe };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return { success: false, error: 'Cadastro simplificado desativado. Use a inscrição operacional com entidade/piquete e atletas.' };
 }
 
-/* ==========================================================================
-   2. ENDPOINTS DE CONFRONTOS E SÚMULAS
-   ========================================================================== */
+function apiExcluirInscrito(idEquipe) {
+  return apiResponse_(() => withDatabaseLock_(() => {
+    const id = requiredText_(idEquipe, 'Equipe', 80);
+    const partidasAtivas = dbRead('tb_partidas').some(p => p.id_equipe_a === id || p.id_equipe_b === id);
+    if (partidasAtivas) throw new Error('A equipe possui partidas ativas e não pode ser removida.');
+    const now = getISODate();
+    const equipeResult = dbUpdateUnsafe_('tb_equipes', 'id_equipe', id, { ativo: false, data_atualizacao: now });
+    if (!equipeResult.success) throw new Error(equipeResult.error);
+    dbRead('tb_inscricoes').filter(i => i.id_equipe === id).forEach(i => dbUpdateUnsafe_('tb_inscricoes', 'id_inscricao', i.id_inscricao, { ativo: false, status: 'CANCELADO', data_atualizacao: now }));
+    return { id_equipe: id };
+  }));
+}
 
-/**
- * Retorna as partidas de uma modalidade específica.
- */
+function apiGerarChaves(idModalidade) {
+  return apiResponse_(() => withDatabaseLock_(() => {
+    const modalidade = getModalidadeRegra(idModalidade);
+    if (!modalidade) throw new Error('Modalidade inválida.');
+    const torneio = dbRead('tb_torneios').find(item => item.status !== 'ENCERRADO') || dbRead('tb_torneios')[0]; if (!torneio) throw new Error('Torneio ativo não encontrado.');
+    if (dbRead('tb_partidas').some(p => p.id_torneio === torneio.id_torneio && p.id_modalidade === modalidade.id_modalidade)) throw new Error('Já existem chaves ativas para esta modalidade.');
+    const equipesAtivas = new Set(dbRead('tb_equipes').map(e => e.id_equipe));
+    const inscritos = dbRead('tb_inscricoes').filter(i => i.id_torneio === torneio.id_torneio && i.id_modalidade === modalidade.id_modalidade && ['CONFIRMADO', 'CONFIRMADA'].includes(i.status) && equipesAtivas.has(i.id_equipe));
+    const classificacaoDireta = ['tava', 'tetarfe'].includes(modalidade.id_modalidade);
+    if (inscritos.length < (classificacaoDireta ? 1 : 2)) throw new Error(classificacaoDireta ? 'Cadastre ao menos uma ficha nesta modalidade.' : 'Cadastre ao menos duas equipes nesta modalidade.');
+    const ids = shuffle_(inscritos.map(i => i.id_equipe));
+    const now = getISODate();
+    const partidas = [];
+    const passo = classificacaoDireta ? 1 : 2;
+    for (let index = 0; index < ids.length - (classificacaoDireta ? 0 : 1); index += passo) {
+      const partida = { id_partida: generateUUID(), id_torneio: inscritos[0].id_torneio || '', id_modalidade: modalidade.id_modalidade, rodada: 1, chave: classificacaoDireta ? `AP-${index + 1}` : `R1-C${(index / 2) + 1}`, ordem: classificacaoDireta ? index + 1 : (index / 2) + 1, id_equipe_a: ids[index], placar_a: '', id_equipe_b: classificacaoDireta ? '' : ids[index + 1], placar_b: classificacaoDireta ? 0 : '', status_partida: 'AGENDADO', pontos_desempate_a: '', pontos_desempate_b: '', tipo_desempate: '', data_criacao: now, data_atualizacao: now, ativo: true };
+      dbInsertUnsafe_('tb_partidas', partida); partidas.push(partida);
+    }
+    return { partidas_criadas: partidas.length, bye: !classificacaoDireta && ids.length % 2 ? ids[ids.length - 1] : null, formato: classificacaoDireta ? 'CLASSIFICACAO_DIRETA' : 'ELIMINATORIA' };
+  }));
+}
+
 function apiGetPartidasPorModalidade(idModalidade) {
-  try {
-    const partidas = dbRead('tb_partidas');
-    const filtradas = partidas.filter(p => p.id_modalidade === idModalidade);
-    return { success: true, data: filtradas };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Atualiza o placar e encerra um confronto na tb_partidas.
- */
-function apiSalvarResultadoPartida(payload) {
-  try {
-    const dadosAtualizados = {
-      placar_a: payload.placar_a,
-      placar_b: payload.placar_b,
-      status_partida: 'FINALIZADO',
-      data_atualizacao: getISODate()
-    };
-
-    const res = dbUpdate('tb_partidas', 'id_partida', payload.id_partida, dadosAtualizados);
-    if (!res.success) throw new Error(res.error);
-
-    // Recalcula o ranking do Campeão Geral após cada partida encerrada
-    processarPontuacaoGeral();
-
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/* ==========================================================================
-   3. ENDPOINT DE APURAÇÃO DO CAMPEÃO GERAL
-   ========================================================================== */
-
-/**
- * Lê e consolida a tabela de classificação geral.
- */
-function apiGetClassificacaoGeral() {
-  try {
-    const ranking = dbRead('tb_pontuacao_geral');
-    // Ordena por maior pontuação
-    ranking.sort((a, b) => b.pontos_totais - a.pontos_totais);
-    return { success: true, data: ranking };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Processa e consolida os pontos na tb_pontuacao_geral (Job Interno)
- */
-function processarPontuacaoGeral() {
-  const partidas = dbRead('tb_partidas');
-  const equipes = dbRead('tb_equipes');
-  
-  const mapaEquipes = {};
-  equipes.forEach(eq => { mapaEquipes[eq.id_equipe] = eq.ctg_responsavel; });
-
-  const mapaCTG = {};
-
-  partidas.forEach(p => {
-    if (p.status_partida !== 'FINALIZADO') return;
-
-    const ctgA = mapaEquipes[p.id_equipe_a];
-    const ctgB = mapaEquipes[p.id_equipe_b];
-
-    if (ctgA) {
-      if (!mapaCTG[ctgA]) mapaCTG[ctgA] = { pontos: 0, vitorias: 0 };
-      mapaCTG[ctgA].pontos += Number(p.placar_a || 0);
-      if (Number(p.placar_a) > Number(p.placar_b)) mapaCTG[ctgA].vitorias += 1;
-    }
-
-    if (ctgB) {
-      if (!mapaCTG[ctgB]) mapaCTG[ctgB] = { pontos: 0, vitorias: 0 };
-      mapaCTG[ctgB].pontos += Number(p.placar_b || 0);
-      if (Number(p.placar_b) > Number(p.placar_a)) mapaCTG[ctgB].vitorias += 1;
-    }
+  return apiResponse_(() => {
+    if (!getModalidadeRegra(idModalidade)) throw new Error('Modalidade inválida.');
+    const torneio = dbRead('tb_torneios').find(item => item.status !== 'ENCERRADO') || dbRead('tb_torneios')[0];
+    const equipes = {};
+    dbRead('tb_equipes', true).forEach(e => { equipes[e.id_equipe] = e; });
+    return dbRead('tb_partidas').filter(p => (!torneio || p.id_torneio === torneio.id_torneio) && p.id_modalidade === idModalidade).sort((a, b) => Number(a.ordem) - Number(b.ordem)).map(p => Object.assign({}, p, {
+      equipeA: equipes[p.id_equipe_a] ? equipes[p.id_equipe_a].nome_equipe : 'Equipe indisponível', entidadeA: equipes[p.id_equipe_a] ? equipes[p.id_equipe_a].entidade_responsavel : '',
+      equipeB: equipes[p.id_equipe_b] ? equipes[p.id_equipe_b].nome_equipe : 'Equipe indisponível', entidadeB: equipes[p.id_equipe_b] ? equipes[p.id_equipe_b].entidade_responsavel : ''
+    }));
   });
-
-  // Atualiza ou Insere na tb_pontuacao_geral
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('tb_pontuacao_geral');
-  sheet.getRange('A2:E' + sheet.getLastRow()).clearContent(); // Limpa e reescreve
-
-  const novasLinhas = Object.keys(mapaCTG).map(ctg => [
-    generateUUID(),
-    ctg,
-    mapaCTG[ctg].pontos,
-    mapaCTG[ctg].vitorias,
-    getISODate()
-  ]);
-
-  if (novasLinhas.length > 0) {
-    sheet.getRange(2, 1, novasLinhas.length, 5).setValues(novasLinhas);
-  }
 }
+
+function apiSalvarResultadoPartida(payload) {
+  return apiResponse_(() => withDatabaseLock_(() => {
+    payload = payload || {};
+    const partida = dbRead('tb_partidas').find(p => p.id_partida === payload.id_partida);
+    if (!partida) throw new Error('Partida não encontrada.');
+    let placar; let desempate = {};
+    if (['tava', 'tetarfe'].includes(partida.id_modalidade) && !partida.id_equipe_b) {
+      const regra = getModalidadeRegra(partida.id_modalidade); const a = Number(payload.placar_a); if (!Number.isInteger(a) || a < regra.placar_min || a > regra.placar_max) throw new Error(`Pontuação inválida para ${regra.nome_modalidade}.`); placar = { placar_a: a, placar_b: 0 };
+    } else if (partida.id_modalidade === 'bocha_48' && Number(payload.placar_a) === Number(payload.placar_b)) {
+      const a = Number(payload.placar_a); const b = Number(payload.placar_b); if (!Number.isInteger(a) || a < 0 || a > 48 || !Number.isInteger(b) || b < 0 || b > 48) throw new Error('Placar regulamentar inválido para Bocha 48.');
+      const decisao = validarDesempateBocha48_(a, b, payload.rodadas_desempate); if (!decisao.vencedor) throw new Error(`Empate pendente: realize ${decisao.pendente}.`);
+      const ultima = payload.rodadas_desempate[decisao.rodada - 1]; placar = { placar_a: a, placar_b: b }; desempate = { pontos_desempate_a: Number(ultima.pontos_a), pontos_desempate_b: Number(ultima.pontos_b), tipo_desempate: decisao.tipo };
+    } else placar = validarPlacarModalidade(partida.id_modalidade, payload.placar_a, payload.placar_b);
+    const result = dbUpdateUnsafe_('tb_partidas', 'id_partida', partida.id_partida, Object.assign({}, placar, desempate, { status_partida: 'FINALIZADO', data_atualizacao: getISODate() }));
+    if (!result.success) throw new Error(result.error);
+    processarPontuacaoGeralUnsafe_();
+    return { id_partida: partida.id_partida };
+  }));
+}
+
+function apiGetClassificacaoGeral() { return apiResponse_(() => { const torneio = dbRead('tb_torneios')[0]; return getRankingEficiencia_(torneio && torneio.id_torneio); }); }
+function processarPontuacaoGeral() { return withDatabaseLock_(() => { const torneio = dbRead('tb_torneios')[0]; return torneio ? recalcularTrofeuEficienciaUnsafe_(torneio.id_torneio) : 0; }); }
+
+function processarPontuacaoGeralUnsafe_() {
+  const torneio = dbRead('tb_torneios')[0];
+  return { registros: torneio ? recalcularTrofeuEficienciaUnsafe_(torneio.id_torneio) : 0 };
+}
+
+function apiResponse_(callback) { try { return { success: true, data: callback() }; } catch (error) { console.error(error); return { success: false, error: error.message || String(error) }; } }
+function requiredText_(value, label, max) { const text = String(value || '').trim(); if (!text) throw new Error(`${label} é obrigatório.`); if (text.length > max) throw new Error(`${label} deve ter no máximo ${max} caracteres.`); return text; }
+function optionalText_(value, max) { const text = String(value || '').trim(); if (text.length > max) throw new Error(`Campo deve ter no máximo ${max} caracteres.`); return text; }
+function normalize_(value) { return String(value || '').trim().toLocaleLowerCase('pt-BR'); }
+function shuffle_(items) { const result = items.slice(); for (let i = result.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [result[i], result[j]] = [result[j], result[i]]; } return result; }
