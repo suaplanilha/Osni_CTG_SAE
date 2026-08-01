@@ -1,10 +1,10 @@
 /** Configuração e migração idempotente do banco Google Sheets. */
 const DB_SCHEMAS = Object.freeze({
   TORNEIOS: { name: 'tb_torneios', headers: ['id_torneio', 'nome_torneio', 'ano', 'status', 'data_inicio', 'data_fim', 'data_criacao', 'data_atualizacao', 'ativo'] },
-  ENTIDADES: { name: 'tb_entidades', headers: ['id_entidade', 'nome_entidade', 'telefone', 'responsavel', 'status_regularidade', 'data_criacao', 'data_atualizacao', 'ativo'] },
+  ENTIDADES: { name: 'tb_entidades', headers: ['id_entidade', 'nome_entidade', 'celular', 'capataz', 'status_regularidade', 'data_criacao', 'data_atualizacao', 'ativo'] },
   ATLETAS: { name: 'tb_atletas', headers: ['id_atleta', 'nome_atleta', 'telefone', 'nome_normalizado', 'telefone_normalizado', 'data_criacao', 'data_atualizacao', 'ativo'] },
   VINCULOS_ATLETAS: { name: 'tb_vinculos_atletas', headers: ['id_vinculo', 'id_torneio', 'id_atleta', 'id_entidade', 'data_vinculo', 'data_atualizacao', 'ativo'] },
-  HABILITACOES: { name: 'tb_habilitacoes_modalidades', headers: ['id_habilitacao', 'id_torneio', 'id_atleta', 'id_modalidade', 'habilitado', 'data_atualizacao', 'ativo'] },
+  HABILITACOES: { name: 'tb_habilitacoes_modalidades', headers: ['id_habilitacao', 'id_torneio', 'id_atleta', 'id_modalidade', 'habilitado', 'papel', 'data_atualizacao', 'ativo'] },
   EQUIPES: { name: 'tb_equipes', headers: ['id_equipe', 'id_torneio', 'id_entidade', 'nome_equipe', 'entidade_responsavel', 'contato', 'status_equipe', 'data_criacao', 'data_atualizacao', 'ativo'] },
   EQUIPE_ATLETAS: { name: 'tb_equipe_atletas', headers: ['id_integrante', 'id_torneio', 'id_equipe', 'id_atleta', 'id_modalidade', 'papel', 'ordem', 'data_criacao', 'data_atualizacao', 'ativo'] },
   MODALIDADES: { name: 'tb_modalidades', headers: ['id_modalidade', 'nome_modalidade', 'placar_min', 'placar_max', 'permite_empate', 'formato', 'regras_pontos', 'ativo'] },
@@ -23,8 +23,8 @@ function initDatabase() {
   const defaultSheet = ss.getSheetByName('Página1') || ss.getSheetByName('Sheet1');
   if (defaultSheet && ss.getSheets().length > 1) ss.deleteSheet(defaultSheet);
   seedTorneioPadrao_();
-  PropertiesService.getScriptProperties().setProperty('SAE_DB_VERSION', '4');
-  return { success: true, version: 4 };
+  PropertiesService.getScriptProperties().setProperty('SAE_DB_VERSION', '5');
+  return { success: true, version: 5 };
 }
 
 function ensureSheetSchema_(ss, schema) {
@@ -67,9 +67,9 @@ function migrarEntidadesLegadas_(ss) {
   const legacy = ss.getSheetByName('tb_ctgs'); const destino = ss.getSheetByName('tb_entidades');
   if (legacy && legacy.getLastRow() > 1 && destino.getLastRow() <= 1) {
     const data = legacy.getDataRange().getValues(); const headers = data[0]; const now = getISODate();
-    data.slice(1).filter(row => row.some(String)).forEach(row => { const item = {}; headers.forEach((h, i) => { item[h] = row[i]; }); dbInsertUnsafe_('tb_entidades', { id_entidade: item.id_ctg || generateUUID(), nome_entidade: item.nome_ctg || 'Entidade', telefone: item.telefone || '', responsavel: '', status_regularidade: item.status_regularidade || 'REGULAR', data_criacao: item.data_criacao || now, data_atualizacao: now, ativo: item.ativo === '' ? true : item.ativo }); });
+    data.slice(1).filter(row => row.some(String)).forEach(row => { const item = {}; headers.forEach((h, i) => { item[h] = row[i]; }); dbInsertUnsafe_('tb_entidades', { id_entidade: item.id_ctg || generateUUID(), nome_entidade: item.nome_ctg || 'Entidade', celular: item.celular || item.telefone || '', capataz: item.capataz || item.responsavel || '', status_regularidade: item.status_regularidade || 'REGULAR', data_criacao: item.data_criacao || now, data_atualizacao: now, ativo: item.ativo === '' ? true : item.ativo }); });
   }
-  [['tb_vinculos_atletas', 'id_ctg', 'id_entidade'], ['tb_equipes', 'id_ctg', 'id_entidade'], ['tb_equipes', 'ctg_responsavel', 'entidade_responsavel'], ['tb_classificacoes_modalidade', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'ctg', 'entidade']].forEach(args => copiarColunaLegada_(ss, args[0], args[1], args[2]));
+  [['tb_entidades', 'telefone', 'celular'], ['tb_entidades', 'responsavel', 'capataz'], ['tb_vinculos_atletas', 'id_ctg', 'id_entidade'], ['tb_equipes', 'id_ctg', 'id_entidade'], ['tb_equipes', 'ctg_responsavel', 'entidade_responsavel'], ['tb_classificacoes_modalidade', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'ctg', 'entidade']].forEach(args => copiarColunaLegada_(ss, args[0], args[1], args[2]));
 }
 
 function copiarColunaLegada_(ss, sheetName, origem, destino) {

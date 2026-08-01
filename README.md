@@ -36,9 +36,9 @@ ________________________________________
 3. Modelo de Dados (Google Sheets - ctg_db)
 O banco de dados relacional foi estruturado em entidades normalizadas por torneio interno:
 Nome da Aba	Função / Entidade	Campos / Colunas
-tb_entidades	Piquetes/entidades do CTG local	id_entidade, nome_entidade, responsável, regularidade
+tb_entidades	Piquetes/entidades do CTG local	id_entidade, nome_entidade, capataz, celular, regularidade
 tb_atletas	Cadastro de competidores	id_atleta, nome, telefone, ativo
-tb_habilitacoes_modalidades	Toggles por atleta/modalidade	id_atleta, id_modalidade, habilitado
+tb_habilitacoes_modalidades	Toggles por atleta/modalidade	id_atleta, id_modalidade, habilitado, papel (titular/reserva)
 tb_equipes	Formações por modalidade	id_equipe, id_entidade, nome_equipe, status
 tb_modalidades	Catálogo dos 6 Esportes	id_modalidade, nome_modalidade, regras_pontos, ativo
 tb_inscricoes	Vínculo Equipe-Esporte	id_inscricao, id_equipe, id_modalidade, status, data_inscricao
@@ -106,4 +106,4 @@ O ranking possui dois níveis. Resultados esportivos permanecem nas partidas e c
 
 ## 10. Frontend operacional
 
-A SPA Vue usa sidebar responsiva e rotas hash para Inscrições, Modalidades, Ranking por Modalidade, Ranking Geral e Administração. Inscrições possuem modal em três etapas, filtros locais, paginação de 25 registros, edição, inativação, mudança de entidade e toggles das seis modalidades. Cada esporte possui identidade cromática fixa: Tava cinza, Bocha Campeira vermelha, Tetarfe amarela, Truco verde, Truco Cego azul e Bocha 48 índigo.
+A SPA Vue usa sidebar responsiva e rotas hash para Inscrições, Modalidades, Ranking por Modalidade, Ranking Geral e Administração. Inscrições possuem modal em três etapas, filtros locais, paginação de 25 registros, edição, inativação, mudança de entidade e toggles das seis modalidades. Cada habilitação registra se o atleta participa como titular ou reserva, e a formação da equipe valida esses papéis contra o regulamento. O cadastro da entidade identifica o Capataz (responsável) e seu celular. Ações de gravação usam um bloqueio de envio no frontend para rejeitar cliques repetidos enquanto a operação está em andamento. Cada esporte possui identidade cromática fixa: Tava cinza, Bocha Campeira vermelha, Tetarfe amarela, Truco verde, Truco Cego azul e Bocha 48 índigo.

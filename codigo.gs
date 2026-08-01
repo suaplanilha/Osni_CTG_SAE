@@ -13,8 +13,7 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
   return HtmlService.createHtmlOutputFromFile('Index').setTitle('SAE - CTG Rodeio dos Palmares')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0').addMetaTag('theme-color', '#4f46e5');
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function apiGetModalidades() {
