@@ -11,7 +11,7 @@
 
 - Use planilhas diferentes para desenvolvimento, homologação e produção.
 - Restrinja editores da planilha, ative histórico de versões e mantenha uma cópia de segurança antes de migrações.
-- Execute `initDatabase` após atualizar este MVP; a migração v3 cria as entidades regulamentares e preserva colunas e dados existentes.
+- Execute `initDatabase` após atualizar este MVP; a migração v4 cria entidades/piquetes e habilitações por modalidade.
 - Monitore falhas em **Execuções** no editor do Apps Script.
 - Confirme que o projeto possui autorização para conexões externas (`UrlFetchApp`); ela é usada para carregar o logotipo CBTG informado em `SUMULA_CONFIG`.
 - Valide o download individual e o lote por modalidade após finalizar partidas de homologação. O PDF é transmitido ao navegador e não é persistido no Drive.

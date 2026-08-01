@@ -49,6 +49,11 @@ const context = vm.createContext({
 });
 ['Modalidades.gs', 'SetupDB.gs', 'Database.gs', 'Dominio2025.gs', 'codigo.gs', 'Sumulas.gs'].forEach(file => vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file }));
 const run = expression => vm.runInContext(expression, context);
+const indexHtml = fs.readFileSync('Index.html', 'utf8');
+['Inscrições', 'Modalidades', 'Ranking por modalidade', 'Ranking geral', 'Administração'].forEach(label => assert.match(indexHtml, new RegExp(label)));
+['modalidade-tava', 'modalidade-bocha_campeira', 'modalidade-tetarfe', 'modalidade-truco', 'modalidade-truco_cego', 'modalidade-bocha_48'].forEach(token => assert.match(indexHtml, new RegExp(token)));
+assert.match(indexHtml, /Nova inscrição/);
+assert.match(indexHtml, /\['toggle'/);
 
 assert.equal(run('initDatabase().success'), true);
 assert.equal(run('apiGetModalidades().data.length'), 6);
@@ -62,24 +67,36 @@ assert.equal(run("calcularTetarfeEquipe_([{total:40},{total:30},{total:20}]).tot
 assert.deepEqual(JSON.parse(JSON.stringify(run("validarQuedasTruco_([{pontos_a:12,pontos_b:5},{pontos_a:8,pontos_b:12},{pontos_a:12,pontos_b:9}])"))), { quedas_a: 2, quedas_b: 1, vencedor: 'A' });
 
 const tournamentId = run("dbRead('tb_torneios')[0].id_torneio");
-const ctgA = run("apiSalvarCtg({nome_ctg:'CTG Regulamentar A',telefone:'51999990001',status_regularidade:'REGULAR'}).data");
-const ctgB = run("apiSalvarCtg({nome_ctg:'CTG Regulamentar B',telefone:'51999990002',status_regularidade:'REGULAR'}).data");
+const entidadeA = run("apiSalvarEntidade({nome_entidade:'Piquete A',telefone:'51999990001',status_regularidade:'REGULAR'}).data");
+const entidadeB = run("apiSalvarEntidade({nome_entidade:'Piquete B',telefone:'51999990002',status_regularidade:'REGULAR'}).data");
+const inscritoOperacional = run(`apiSalvarInscricaoOperacional({id_torneio:'${tournamentId}',id_entidade:'${entidadeA.id_entidade}',nome_atleta:'Atleta Toggle',telefone:'51988887777',modalidades:{tava:true,truco:true}})`);
+assert.equal(inscritoOperacional.success, true);
+assert.equal(run("apiGetInscricoesOperacionais().data.find(a=>a.nome_atleta==='Atleta Toggle').modalidades.tava"), true);
+assert.equal(run(`apiInativarAtleta({id_torneio:'${tournamentId}',id_atleta:'${inscritoOperacional.data.id_atleta}',motivo:'Teste'}).success`), true);
+assert.equal(run("String(apiGetInscricoesOperacionais().data.find(a=>a.nome_atleta==='Atleta Toggle').ativo).toLowerCase()"), 'false');
 for (let i = 1; i <= 3; i++) {
-  run(`apiSalvarAtleta({id_torneio:'${tournamentId}',id_ctg:'${ctgA.id_ctg}',nome_atleta:'Atleta A${i}',telefone:'5191111000${i}'})`);
-  run(`apiSalvarAtleta({id_torneio:'${tournamentId}',id_ctg:'${ctgB.id_ctg}',nome_atleta:'Atleta B${i}',telefone:'5192222000${i}'})`);
+  run(`apiSalvarInscricaoOperacional({id_torneio:'${tournamentId}',id_entidade:'${entidadeA.id_entidade}',nome_atleta:'Atleta A${i}',telefone:'5191111000${i}',modalidades:{bocha_campeira:true,tava:true}})`);
+  run(`apiSalvarInscricaoOperacional({id_torneio:'${tournamentId}',id_entidade:'${entidadeB.id_entidade}',nome_atleta:'Atleta B${i}',telefone:'5192222000${i}',modalidades:{bocha_campeira:true}})`);
 }
-const teamA = run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_ctg:'${ctgA.id_ctg}',id_modalidade:'bocha_campeira',nome_equipe:'Trio A',ids_atletas:dbRead('tb_vinculos_atletas').filter(v=>v.id_ctg==='${ctgA.id_ctg}').map(v=>v.id_atleta)})`).data;
-const teamB = run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_ctg:'${ctgB.id_ctg}',id_modalidade:'bocha_campeira',nome_equipe:'Trio B',ids_atletas:dbRead('tb_vinculos_atletas').filter(v=>v.id_ctg==='${ctgB.id_ctg}').map(v=>v.id_atleta)})`).data;
+const teamA = run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_entidade:'${entidadeA.id_entidade}',id_modalidade:'bocha_campeira',nome_equipe:'Trio A',ids_atletas:dbRead('tb_atletas').filter(a=>a.nome_atleta.startsWith('Atleta A')).map(a=>a.id_atleta)})`).data;
+const teamB = run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_entidade:'${entidadeB.id_entidade}',id_modalidade:'bocha_campeira',nome_equipe:'Trio B',ids_atletas:dbRead('tb_atletas').filter(a=>a.nome_atleta.startsWith('Atleta B')).map(a=>a.id_atleta)})`).data;
 assert.equal(run("apiCadastrarInscrito({}).success"), false);
-assert.equal(run(`apiSalvarAtleta({id_torneio:'${tournamentId}',id_ctg:'${ctgB.id_ctg}',nome_atleta:'Atleta A1',telefone:'51911110001'}).success`), false);
-assert.equal(run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_ctg:'${ctgA.id_ctg}',id_modalidade:'truco',nome_equipe:'Incompleta',ids_atletas:[dbRead('tb_atletas')[0].id_atleta]}).success`), false);
+assert.equal(run(`apiSalvarAtleta({id_torneio:'${tournamentId}',id_entidade:'${entidadeB.id_entidade}',nome_atleta:'Atleta A1',telefone:'51911110001'}).success`), false);
+assert.equal(run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_entidade:'${entidadeA.id_entidade}',id_modalidade:'truco',nome_equipe:'Incompleta',ids_atletas:[dbRead('tb_atletas')[0].id_atleta]}).success`), false);
 assert.equal(run('REGULAMENTO_2025.eficiencia[2]'), 8);
+const tavaTeam = run(`apiCadastrarEquipeRegulamentar({id_torneio:'${tournamentId}',id_entidade:'${entidadeA.id_entidade}',id_modalidade:'tava',nome_equipe:'Tava A',ids_atletas:dbRead('tb_atletas').filter(a=>a.nome_atleta.startsWith('Atleta A')).map(a=>a.id_atleta)})`).data;
+const tavaDisputa = run("apiGerarChaves('tava')");
+assert.equal(tavaDisputa.data.formato, 'CLASSIFICACAO_DIRETA');
+const tavaMatch = run("apiGetPartidasPorModalidade('tava').data[0]");
+assert.equal(tavaMatch.id_equipe_b, '');
+assert.equal(run(`apiSalvarResultadoPartida({id_partida:'${tavaMatch.id_partida}',placar_a:30,placar_b:0}).success`), true);
 
 const bracket = run("apiGerarChaves('bocha_campeira')");
 assert.equal(bracket.success, true, JSON.stringify(bracket));
 assert.equal(bracket.data.partidas_criadas, 1);
 assert.equal(run("apiGerarChaves('bocha_campeira').success"), false);
 const matchId = run("apiGetPartidasPorModalidade('bocha_campeira').data[0].id_partida");
+assert.equal(run("apiGetPainelModalidade('bocha_campeira').data.equipes[0].atletas.length"), 3);
 assert.equal(run(`apiGerarSumulaPdf('${matchId}').success`), false);
 assert.equal(run(`apiSalvarResultadoPartida({id_partida:'${matchId}',placar_a:12,placar_b:8}).success`), true);
 assert.equal(run('apiGetClassificacaoGeral().data.length'), 0);
@@ -87,7 +104,7 @@ const pdf = run(`apiGerarSumulaPdf('${matchId}')`);
 assert.equal(pdf.success, true);
 assert.match(pdf.data.fileName, /^SUMULA_BOCHA_CAMPEIRA_/);
 assert.ok(pdf.data.base64.length > 100);
-assert.match(run("renderDocumentoSumulas_([getPartidasSumula_()[0]], '')"), /BOCHA CAMPEIRA/);
+assert.match(run("renderDocumentoSumulas_([getPartidasSumula_().find(p=>p.id_modalidade==='bocha_campeira')], '')"), /BOCHA CAMPEIRA/);
 assert.equal(run("['truco','truco_cego','tava','bocha_campeira','tetarfe','bocha_48'].every(id => { const p = Object.assign({}, getPartidasSumula_()[0], {id_modalidade:id}); return renderDocumentoSumulas_([p], '').includes('<article'); })"), true);
 assert.equal((run("renderDocumentoSumulas_([1,2,3].map(n => Object.assign({}, getPartidasSumula_()[0], {id_modalidade:'truco',id_partida:String(n)})), '')").match(/<section class="page/g) || []).length, 2);
 assert.equal(run(`apiExcluirInscrito('${teamA.id_equipe}').success`), false);
