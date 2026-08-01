@@ -1,8 +1,8 @@
 /** Configuração e migração idempotente do banco Google Sheets. */
 const DB_SCHEMAS = Object.freeze({
   TORNEIOS: { name: 'tb_torneios', headers: ['id_torneio', 'nome_torneio', 'ano', 'status', 'data_inicio', 'data_fim', 'data_criacao', 'data_atualizacao', 'ativo'] },
-  ENTIDADES: { name: 'tb_entidades', headers: ['id_entidade', 'nome_entidade', 'celular', 'capataz', 'status_regularidade', 'data_criacao', 'data_atualizacao', 'ativo'] },
-  ATLETAS: { name: 'tb_atletas', headers: ['id_atleta', 'nome_atleta', 'telefone', 'nome_normalizado', 'telefone_normalizado', 'data_criacao', 'data_atualizacao', 'ativo'] },
+  ENTIDADES: { name: 'tb_entidades', headers: ['id_entidade', 'nome_entidade', 'capataz', 'status_regularidade', 'data_criacao', 'data_atualizacao', 'ativo'] },
+  ATLETAS: { name: 'tb_atletas', headers: ['id_atleta', 'nome_atleta', 'nome_normalizado', 'data_criacao', 'data_atualizacao', 'ativo'] },
   VINCULOS_ATLETAS: { name: 'tb_vinculos_atletas', headers: ['id_vinculo', 'id_torneio', 'id_atleta', 'id_entidade', 'data_vinculo', 'data_atualizacao', 'ativo'] },
   HABILITACOES: { name: 'tb_habilitacoes_modalidades', headers: ['id_habilitacao', 'id_torneio', 'id_atleta', 'id_modalidade', 'habilitado', 'papel', 'data_atualizacao', 'ativo'] },
   EQUIPES: { name: 'tb_equipes', headers: ['id_equipe', 'id_torneio', 'id_entidade', 'nome_equipe', 'entidade_responsavel', 'contato', 'status_equipe', 'data_criacao', 'data_atualizacao', 'ativo'] },
@@ -23,8 +23,8 @@ function initDatabase() {
   const defaultSheet = ss.getSheetByName('Página1') || ss.getSheetByName('Sheet1');
   if (defaultSheet && ss.getSheets().length > 1) ss.deleteSheet(defaultSheet);
   seedTorneioPadrao_();
-  PropertiesService.getScriptProperties().setProperty('SAE_DB_VERSION', '5');
-  return { success: true, version: 5 };
+  PropertiesService.getScriptProperties().setProperty('SAE_DB_VERSION', '6');
+  return { success: true, version: 6 };
 }
 
 function ensureSheetSchema_(ss, schema) {
@@ -63,11 +63,24 @@ function seedTorneioPadrao_() {
   dbInsertUnsafe_('tb_torneios', { id_torneio: generateUUID(), nome_torneio: 'Jogos Tradicionalistas 2025', ano: 2025, status: 'PLANEJAMENTO', data_inicio: '', data_fim: '', data_criacao: now, data_atualizacao: now, ativo: true });
 }
 
+function resetDatabaseEventoUnsafe_(nomeTorneio) {
+  const preservar = new Set([DB_SCHEMAS.MODALIDADES.name]);
+  Object.values(DB_SCHEMAS).forEach(schema => {
+    if (preservar.has(schema.name)) return;
+    const sheet = getSheet_(schema.name);
+    if (sheet.getLastRow() > 1) sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+  });
+  seedModalidades();
+  const now = getISODate(); const torneio = { id_torneio: generateUUID(), nome_torneio: optionalText_(nomeTorneio, 140) || 'Novo evento', ano: new Date().getFullYear(), status: 'PLANEJAMENTO', data_inicio: '', data_fim: '', data_criacao: now, data_atualizacao: now, ativo: true };
+  dbInsertUnsafe_('tb_torneios', torneio);
+  return torneio;
+}
+
 function migrarEntidadesLegadas_(ss) {
   const legacy = ss.getSheetByName('tb_ctgs'); const destino = ss.getSheetByName('tb_entidades');
   if (legacy && legacy.getLastRow() > 1 && destino.getLastRow() <= 1) {
     const data = legacy.getDataRange().getValues(); const headers = data[0]; const now = getISODate();
-    data.slice(1).filter(row => row.some(String)).forEach(row => { const item = {}; headers.forEach((h, i) => { item[h] = row[i]; }); dbInsertUnsafe_('tb_entidades', { id_entidade: item.id_ctg || generateUUID(), nome_entidade: item.nome_ctg || 'Entidade', celular: item.celular || item.telefone || '', capataz: item.capataz || item.responsavel || '', status_regularidade: item.status_regularidade || 'REGULAR', data_criacao: item.data_criacao || now, data_atualizacao: now, ativo: item.ativo === '' ? true : item.ativo }); });
+    data.slice(1).filter(row => row.some(String)).forEach(row => { const item = {}; headers.forEach((h, i) => { item[h] = row[i]; }); dbInsertUnsafe_('tb_entidades', { id_entidade: item.id_ctg || generateUUID(), nome_entidade: item.nome_ctg || 'Entidade', capataz: item.capataz || item.responsavel || '', status_regularidade: item.status_regularidade || 'REGULAR', data_criacao: item.data_criacao || now, data_atualizacao: now, ativo: item.ativo === '' ? true : item.ativo }); });
   }
   [['tb_entidades', 'telefone', 'celular'], ['tb_entidades', 'responsavel', 'capataz'], ['tb_vinculos_atletas', 'id_ctg', 'id_entidade'], ['tb_equipes', 'id_ctg', 'id_entidade'], ['tb_equipes', 'ctg_responsavel', 'entidade_responsavel'], ['tb_classificacoes_modalidade', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'id_ctg', 'id_entidade'], ['tb_pontuacao_geral', 'ctg', 'entidade']].forEach(args => copiarColunaLegada_(ss, args[0], args[1], args[2]));
 }

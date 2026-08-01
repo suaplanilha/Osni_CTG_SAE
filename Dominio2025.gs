@@ -1,12 +1,8 @@
 /** Regras consolidadas do Regulamento de Esportes Campeiros 2025. */
 const REGULAMENTO_2025 = Object.freeze({
   composicao: Object.freeze({
-    tava: { minimo: 3, maximo: 4, titularesMin: 3, reservaMax: 0 },
-    bocha_campeira: { minimo: 3, maximo: 4, titularesMin: 3, reservaMax: 1 },
-    tetarfe: { minimo: 1, maximo: 4, titularesMin: 1, reservaMax: 0 },
-    truco: { minimo: 3, maximo: 4, titularesMin: 3, reservaMax: 1 },
-    truco_cego: { minimo: 3, maximo: 4, titularesMin: 3, reservaMax: 1 },
-    bocha_48: { minimo: 2, maximo: 3, titularesMin: 2, reservaMax: 0 }
+    tava: { flexivel: true }, bocha_campeira: { flexivel: true }, tetarfe: { flexivel: true },
+    truco: { flexivel: true }, truco_cego: { flexivel: true }, bocha_48: { flexivel: true }
   }),
   eficiencia: Object.freeze({ 1: 10, 2: 8, 3: 6, 4: 5, 5: 4, participacao: 2 }),
   conclusoesSemPontos: Object.freeze(['WO', 'DESCLASSIFICADO', 'DESISTENTE', 'AUSENTE', 'NAO_CONCLUIU'])
@@ -37,7 +33,7 @@ function apiGetInscricoesOperacionais() {
 function apiSalvarInscricaoOperacional(payload) {
   return apiResponse_(() => withDatabaseLock_(() => {
     payload = payload || {}; const torneio = obterTorneio_(payload.id_torneio); const entidade = obterEntidadeRegular_(payload.id_entidade); const now = getISODate();
-    const nome = requiredText_(payload.nome_atleta, 'Nome do atleta', 140); const telefone = normalizarTelefone_(requiredText_(payload.telefone, 'Telefone', 30));
+    const nome = requiredText_(payload.nome_atleta, 'Nome do atleta', 140);
     let atleta = payload.id_atleta ? dbRead('tb_atletas', true).find(item => item.id_atleta === payload.id_atleta) : null;
     if (payload.id_atleta && !atleta) throw new Error('Atleta não encontrado.');
     if (atleta) {
@@ -46,12 +42,12 @@ function apiSalvarInscricaoOperacional(payload) {
       const habilitacoesAtuais = dbRead('tb_habilitacoes_modalidades', true).filter(item => item.id_torneio === torneio.id_torneio && item.id_atleta === atleta.id_atleta && normalizeBoolean_(item.habilitado));
       habilitacoesAtuais.forEach(item => { if (!payload.modalidades || !payload.modalidades[item.id_modalidade]) validarDesabilitacaoModalidade_(torneio.id_torneio, atleta.id_atleta, item.id_modalidade); });
     }
-    const duplicado = dbRead('tb_atletas').find(item => item.nome_normalizado === normalize_(nome) && item.telefone_normalizado === telefone && (!atleta || item.id_atleta !== atleta.id_atleta));
-    if (duplicado) throw new Error('Já existe um atleta com este nome e telefone.');
+    const duplicado = dbRead('tb_atletas').find(item => item.nome_normalizado === normalize_(nome) && (!atleta || item.id_atleta !== atleta.id_atleta));
+    if (duplicado) throw new Error('Já existe um atleta com este nome.');
     if (atleta) {
-      const result = dbUpdateUnsafe_('tb_atletas', 'id_atleta', atleta.id_atleta, { nome_atleta: nome, telefone, nome_normalizado: normalize_(nome), telefone_normalizado: telefone, ativo: true, data_atualizacao: now }); if (!result.success) throw new Error(result.error);
+      const result = dbUpdateUnsafe_('tb_atletas', 'id_atleta', atleta.id_atleta, { nome_atleta: nome, nome_normalizado: normalize_(nome), ativo: true, data_atualizacao: now }); if (!result.success) throw new Error(result.error);
     } else {
-      atleta = { id_atleta: generateUUID(), nome_atleta: nome, telefone, nome_normalizado: normalize_(nome), telefone_normalizado: telefone, data_criacao: now, data_atualizacao: now, ativo: true }; dbInsertUnsafe_('tb_atletas', atleta);
+      atleta = { id_atleta: generateUUID(), nome_atleta: nome, nome_normalizado: normalize_(nome), data_criacao: now, data_atualizacao: now, ativo: true }; dbInsertUnsafe_('tb_atletas', atleta);
     }
     const vinculo = dbRead('tb_vinculos_atletas', true).find(item => item.id_torneio === torneio.id_torneio && item.id_atleta === atleta.id_atleta);
     if (vinculo && vinculo.id_entidade !== entidade.id_entidade) validarMudancaEntidade_(torneio.id_torneio, atleta.id_atleta);
@@ -103,8 +99,63 @@ function apiSalvarEntidade(payload) {
     payload = payload || {}; const now = getISODate();
     const nome = requiredText_(payload.nome_entidade, 'Nome da entidade/piquete', 140);
     if (dbRead('tb_entidades').some(item => normalize_(item.nome_entidade) === normalize_(nome))) throw new Error('Esta entidade já está cadastrada.');
-    const entidade = { id_entidade: generateUUID(), nome_entidade: nome, celular: normalizarTelefone_(requiredText_(payload.celular || payload.telefone, 'Celular do capataz', 30)), capataz: requiredText_(payload.capataz || payload.responsavel, 'Nome do capataz', 120), status_regularidade: payload.status_regularidade === 'IRREGULAR' ? 'IRREGULAR' : 'REGULAR', data_criacao: now, data_atualizacao: now, ativo: true };
+    const entidade = { id_entidade: generateUUID(), nome_entidade: nome, capataz: requiredText_(payload.capataz || payload.responsavel, 'Nome do capataz', 120), status_regularidade: 'REGULAR', data_criacao: now, data_atualizacao: now, ativo: true };
     dbInsertUnsafe_('tb_entidades', entidade); return entidade;
+  }));
+}
+
+/** Cadastro local em uma única operação: piquete, atletas e fichas por modalidade. */
+function apiCadastrarInscricaoUnificada(payload) {
+  return apiResponse_(() => withDatabaseLock_(() => {
+    payload = payload || {}; const torneio = obterTorneio_(payload.id_torneio); const now = getISODate();
+    const idRequisicao = optionalText_(payload.id_requisicao, 100);
+    if (idRequisicao && dbRead('tb_auditoria', true).some(item => item.acao === 'CADASTRAR' && item.id_registro === idRequisicao)) throw new Error('Esta inscrição já foi processada. Atualize a listagem antes de tentar novamente.');
+    const nomeEntidade = requiredText_(payload.nome_entidade, 'Nome da entidade/piquete', 140);
+    const capataz = requiredText_(payload.capataz, 'Nome do capataz', 120);
+    const informados = (Array.isArray(payload.atletas) ? payload.atletas : []).map(item => ({ nome_atleta: optionalText_(item && item.nome_atleta, 140), modalidades: item && item.modalidades || {}, papeis: item && item.papeis || {} })).filter(item => item.nome_atleta);
+    if (!informados.length || informados.length > 5) throw new Error('Informe de 1 a 5 nomes para a inscrição.');
+    if (!informados.some(item => MODALIDADES.some(mod => Boolean(item.modalidades[mod.id_modalidade])))) throw new Error('Selecione ao menos uma modalidade para um dos nomes informados.');
+    const nomes = new Set(); informados.forEach(item => { const key = normalize_(item.nome_atleta); if (nomes.has(key)) throw new Error('Não repita o mesmo nome na equipe.'); nomes.add(key); });
+    let entidade = dbRead('tb_entidades', true).find(item => normalize_(item.nome_entidade) === normalize_(nomeEntidade));
+    if (entidade) {
+      dbUpdateUnsafe_('tb_entidades', 'id_entidade', entidade.id_entidade, { capataz, status_regularidade: 'REGULAR', ativo: true, data_atualizacao: now });
+      entidade = Object.assign({}, entidade, { capataz, status_regularidade: 'REGULAR', ativo: true });
+    } else {
+      entidade = { id_entidade: generateUUID(), nome_entidade: nomeEntidade, capataz, status_regularidade: 'REGULAR', data_criacao: now, data_atualizacao: now, ativo: true };
+      dbInsertUnsafe_('tb_entidades', entidade);
+    }
+    const vinculos = dbRead('tb_vinculos_atletas', true).filter(item => item.id_torneio === torneio.id_torneio && item.id_entidade === entidade.id_entidade);
+    const atletasExistentes = dbRead('tb_atletas', true); const atletas = [];
+    informados.forEach(item => {
+      let atleta = atletasExistentes.find(a => normalize_(a.nome_atleta) === normalize_(item.nome_atleta) && vinculos.some(v => v.id_atleta === a.id_atleta));
+      if (!atleta) {
+        atleta = { id_atleta: generateUUID(), nome_atleta: item.nome_atleta, nome_normalizado: normalize_(item.nome_atleta), data_criacao: now, data_atualizacao: now, ativo: true };
+        dbInsertUnsafe_('tb_atletas', atleta);
+        dbInsertUnsafe_('tb_vinculos_atletas', { id_vinculo: generateUUID(), id_torneio: torneio.id_torneio, id_atleta: atleta.id_atleta, id_entidade: entidade.id_entidade, data_vinculo: now, data_atualizacao: now, ativo: true });
+      }
+      MODALIDADES.filter(mod => Boolean(item.modalidades[mod.id_modalidade])).forEach(mod => upsertHabilitacao_(torneio.id_torneio, atleta.id_atleta, mod.id_modalidade, true, item.papeis[mod.id_modalidade], now));
+      atletas.push({ atleta, configuracao: item });
+    });
+    const equipes = [];
+    MODALIDADES.forEach(mod => {
+      const selecionados = atletas.filter(item => item.configuracao.modalidades[mod.id_modalidade]); if (!selecionados.length) return;
+      const equipe = { id_equipe: generateUUID(), id_torneio: torneio.id_torneio, id_entidade: entidade.id_entidade, nome_equipe: nomeEntidade + ' · ' + mod.nome_modalidade, entidade_responsavel: nomeEntidade, contato: '', status_equipe: 'CONFIRMADA', data_criacao: now, data_atualizacao: now, ativo: true };
+      dbInsertUnsafe_('tb_equipes', equipe);
+      selecionados.forEach((item, index) => dbInsertUnsafe_('tb_equipe_atletas', { id_integrante: generateUUID(), id_torneio: torneio.id_torneio, id_equipe: equipe.id_equipe, id_atleta: item.atleta.id_atleta, id_modalidade: mod.id_modalidade, papel: normalizarPapelAtleta_(item.configuracao.papeis[mod.id_modalidade]), ordem: index + 1, data_criacao: now, data_atualizacao: now, ativo: true }));
+      dbInsertUnsafe_('tb_inscricoes', { id_inscricao: generateUUID(), id_torneio: torneio.id_torneio, id_equipe: equipe.id_equipe, id_modalidade: mod.id_modalidade, status: 'CONFIRMADA', situacao_conclusao: 'PENDENTE', data_inscricao: now, data_atualizacao: now, ativo: true });
+      equipes.push(equipe);
+    });
+    if (!equipes.length) throw new Error('Selecione ao menos uma modalidade para um dos nomes informados.');
+    registrarAuditoria_({ id_torneio: torneio.id_torneio, entidade: 'INSCRICAO_UNIFICADA', id_registro: idRequisicao || entidade.id_entidade, acao: 'CADASTRAR', dados_novos: { nome_entidade: nomeEntidade, atletas: informados.length, equipes: equipes.length } });
+    return { entidade, atletas: atletas.map(item => item.atleta), equipes };
+  }));
+}
+
+function apiResetarBancoEvento(payload) {
+  return apiResponse_(() => withDatabaseLock_(() => {
+    payload = payload || {};
+    if (String(payload.confirmacao || '').trim().toUpperCase() !== 'RESETAR EVENTO') throw new Error('Digite RESETAR EVENTO para confirmar.');
+    return resetDatabaseEventoUnsafe_(requiredText_(payload.nome_torneio, 'Nome do novo evento', 140));
   }));
 }
 
@@ -112,12 +163,11 @@ function apiSalvarAtleta(payload) {
   return apiResponse_(() => withDatabaseLock_(() => {
     payload = payload || {}; const now = getISODate();
     const nome = requiredText_(payload.nome_atleta, 'Nome do atleta', 140);
-    const telefone = normalizarTelefone_(requiredText_(payload.telefone, 'Telefone', 30));
     const torneio = obterTorneio_(payload.id_torneio); const entidade = obterEntidadeRegular_(payload.id_entidade);
     const nomeNormalizado = normalize_(nome);
-    let atleta = dbRead('tb_atletas').find(item => item.nome_normalizado === nomeNormalizado && item.telefone_normalizado === telefone);
+    let atleta = dbRead('tb_atletas').find(item => item.nome_normalizado === nomeNormalizado);
     if (!atleta) {
-      atleta = { id_atleta: generateUUID(), nome_atleta: nome, telefone, nome_normalizado: nomeNormalizado, telefone_normalizado: telefone, data_criacao: now, data_atualizacao: now, ativo: true };
+      atleta = { id_atleta: generateUUID(), nome_atleta: nome, nome_normalizado: nomeNormalizado, data_criacao: now, data_atualizacao: now, ativo: true };
       dbInsertUnsafe_('tb_atletas', atleta);
     }
     const vinculoExistente = dbRead('tb_vinculos_atletas').find(item => item.id_torneio === torneio.id_torneio && item.id_atleta === atleta.id_atleta);
@@ -133,15 +183,12 @@ function apiCadastrarEquipeRegulamentar(payload) {
     const torneio = obterTorneio_(payload.id_torneio); const entidade = obterEntidadeRegular_(payload.id_entidade);
     const modalidade = getModalidadeRegra(payload.id_modalidade); if (!modalidade) throw new Error('Modalidade inválida.');
     const ids = Array.from(new Set(Array.isArray(payload.ids_atletas) ? payload.ids_atletas.map(String) : []));
-    const regra = validarComposicaoEquipe_(modalidade.id_modalidade, ids);
+    if (!ids.length) throw new Error('Selecione ao menos um atleta.');
     const vinculos = dbRead('tb_vinculos_atletas').filter(item => item.id_torneio === torneio.id_torneio && ids.includes(String(item.id_atleta)));
     if (vinculos.length !== ids.length || vinculos.some(item => item.id_entidade !== entidade.id_entidade)) throw new Error('Todos os atletas devem representar a entidade selecionada neste torneio.');
     const habilitados = dbRead('tb_habilitacoes_modalidades').filter(item => item.id_torneio === torneio.id_torneio && item.id_modalidade === modalidade.id_modalidade && ids.includes(String(item.id_atleta)) && normalizeBoolean_(item.habilitado));
     if (habilitados.length !== ids.length) throw new Error('Todos os atletas devem estar habilitados nesta modalidade.');
     const papeis = {}; habilitados.forEach(item => { papeis[String(item.id_atleta)] = normalizarPapelAtleta_(item.papel); });
-    const titulares = ids.filter(id => papeis[id] === 'TITULAR').length; const reservas = ids.length - titulares;
-    if (titulares < regra.titularesMin) throw new Error('A equipe precisa de pelo menos ' + regra.titularesMin + ' atleta(s) titular(es).');
-    if (reservas > regra.reservaMax) throw new Error('A modalidade permite no máximo ' + regra.reservaMax + ' atleta(s) reserva(s).');
     const equipe = { id_equipe: generateUUID(), id_torneio: torneio.id_torneio, id_entidade: entidade.id_entidade, nome_equipe: requiredText_(payload.nome_equipe, 'Nome da equipe/ficha', 120), entidade_responsavel: entidade.nome_entidade, contato: '', status_equipe: 'CONFIRMADA', data_criacao: now, data_atualizacao: now, ativo: true };
     dbInsertUnsafe_('tb_equipes', equipe);
     ids.forEach((idAtleta, index) => dbInsertUnsafe_('tb_equipe_atletas', { id_integrante: generateUUID(), id_torneio: torneio.id_torneio, id_equipe: equipe.id_equipe, id_atleta: idAtleta, id_modalidade: modalidade.id_modalidade, papel: papeis[idAtleta], ordem: index + 1, data_criacao: now, data_atualizacao: now, ativo: true }));
@@ -199,10 +246,9 @@ function recalcularTrofeuEficienciaUnsafe_(idTorneio) {
 }
 
 function getRankingEficiencia_(idTorneio) { return dbRead('tb_pontuacao_geral').filter(item => !idTorneio || item.id_torneio === idTorneio).sort((a, b) => Number(b.pontos_totais) - Number(a.pontos_totais) || Number(b.primeiros_lugares) - Number(a.primeiros_lugares) || Number(b.segundos_lugares) - Number(a.segundos_lugares) || Number(b.terceiros_lugares) - Number(a.terceiros_lugares) || String(a.entidade).localeCompare(String(b.entidade), 'pt-BR')); }
-function validarComposicaoEquipe_(id, ids) { const regra = REGULAMENTO_2025.composicao[id]; if (!regra) throw new Error('Modalidade sem regra de composição.'); if (ids.length < regra.minimo || ids.length > regra.maximo) throw new Error(`A modalidade exige de ${regra.minimo} a ${regra.maximo} atletas.`); return regra; }
+function validarComposicaoEquipe_(id, ids) { if (!getModalidadeRegra(id)) throw new Error('Modalidade inválida.'); if (!Array.isArray(ids) || !ids.length) throw new Error('Selecione ao menos um atleta.'); return { minimo: 1, maximo: null, flexivel: true }; }
 function obterTorneio_(id) { const item = dbRead('tb_torneios').find(t => t.id_torneio === id) || (!id ? dbRead('tb_torneios')[0] : null); if (!item) throw new Error('Torneio inválido.'); return item; }
 function obterEntidadeRegular_(id) { const item = dbRead('tb_entidades').find(entidade => entidade.id_entidade === id); if (!item) throw new Error('Entidade inválida.'); if (item.status_regularidade !== 'REGULAR') throw new Error('A entidade não está regular para inscrições.'); return item; }
-function normalizarTelefone_(value) { const digits = String(value || '').replace(/\D/g, ''); if (digits.length < 10 || digits.length > 13) throw new Error('Informe um telefone válido com DDD.'); return digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits; }
 function normalizarConclusao_(value) { const allowed = ['CONCLUIDA'].concat(REGULAMENTO_2025.conclusoesSemPontos); return allowed.includes(value) ? value : 'CONCLUIDA'; }
 function enriquecerAtletas_(idTorneio) { const vinculos = dbRead('tb_vinculos_atletas', true).filter(v => !idTorneio || v.id_torneio === idTorneio); const entidades = {}; dbRead('tb_entidades', true).forEach(c => { entidades[c.id_entidade] = c.nome_entidade; }); return dbRead('tb_atletas', true).map(a => { const v = vinculos.find(item => item.id_atleta === a.id_atleta); return Object.assign({}, a, { id_entidade: v ? v.id_entidade : '', nome_entidade: v ? entidades[v.id_entidade] : '' }); }); }
 function registrarAuditoria_(data) { const now = getISODate(); dbInsertUnsafe_('tb_auditoria', { id_auditoria: generateUUID(), id_torneio: data.id_torneio || '', entidade: data.entidade, id_registro: data.id_registro, acao: data.acao, dados_anteriores: JSON.stringify(data.dados_anteriores || null), dados_novos: JSON.stringify(data.dados_novos || null), motivo: data.motivo || '', administrador: Session.getActiveUser().getEmail() || 'admin', data_evento: now }); }

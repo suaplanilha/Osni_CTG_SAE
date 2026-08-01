@@ -11,7 +11,9 @@
 
 - Use planilhas diferentes para desenvolvimento, homologação e produção.
 - Restrinja editores da planilha, ative histórico de versões e mantenha uma cópia de segurança antes de migrações.
-- Execute `initDatabase` após atualizar este MVP; a migração v5 preserva os dados legados, adiciona Capataz/Celular às entidades e o papel Titular/Reserva às habilitações por modalidade.
+- Execute `initDatabase` após atualizar este MVP; a migração v6 simplifica os cadastros para nome do piquete, Capataz e nomes dos atletas.
+- Ao usar `clasp`, mantenha o `.claspignore`: `tests/run-tests.cjs` é um teste Node local e não pode ser enviado ou copiado para o editor do Apps Script.
+- Antes de usar **Resetar banco**, faça backup da planilha. A confirmação `RESETAR EVENTO` apaga todos os dados operacionais e preserva apenas o catálogo das modalidades.
 - Monitore falhas em **Execuções** no editor do Apps Script.
 - Confirme que o projeto possui autorização para conexões externas (`UrlFetchApp`); ela é usada para carregar o logotipo CBTG informado em `SUMULA_CONFIG`.
 - Valide o download individual e o lote por modalidade após finalizar partidas de homologação. O PDF é transmitido ao navegador e não é persistido no Drive.

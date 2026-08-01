@@ -36,8 +36,8 @@ ________________________________________
 3. Modelo de Dados (Google Sheets - ctg_db)
 O banco de dados relacional foi estruturado em entidades normalizadas por torneio interno:
 Nome da Aba	Função / Entidade	Campos / Colunas
-tb_entidades	Piquetes/entidades do CTG local	id_entidade, nome_entidade, capataz, celular, regularidade
-tb_atletas	Cadastro de competidores	id_atleta, nome, telefone, ativo
+tb_entidades	Piquetes/entidades do CTG local	id_entidade, nome_entidade, capataz, regularidade
+tb_atletas	Cadastro de competidores	id_atleta, nome, ativo
 tb_habilitacoes_modalidades	Toggles por atleta/modalidade	id_atleta, id_modalidade, habilitado, papel (titular/reserva)
 tb_equipes	Formações por modalidade	id_equipe, id_entidade, nome_equipe, status
 tb_modalidades	Catálogo dos 6 Esportes	id_modalidade, nome_modalidade, regras_pontos, ativo
@@ -82,7 +82,7 @@ ________________________________________
 
 ## 6. Regras funcionais do MVP
 
-As modalidades são definidas exclusivamente em `Modalidades.gs`, com IDs estáveis e regras do Regulamento 2025. `Dominio2025.gs` complementa os limites finais com composição de equipes, apuração da Tava, Carambola da Bocha 48, soma do Tetarfe, quedas do Truco, homologação auditada e Troféu Eficiência.
+As modalidades são definidas exclusivamente em `Modalidades.gs`, com IDs estáveis. O evento local aceita fichas com qualquer quantidade entre um e cinco nomes, sem bloquear a inscrição pelos mínimos e máximos do regulamento. As regras esportivas de placar, apuração, homologação e Troféu Eficiência continuam disponíveis para a operação das partidas.
 
 O chaveamento do MVP sorteia os inscritos confirmados e cria confrontos persistentes da primeira rodada. Com quantidade ímpar, uma equipe recebe passagem automática (`bye`). Uma chave existente não pode ser recriada acidentalmente.
 
@@ -100,10 +100,14 @@ O logotipo oficial da CBTG é resolvido a partir de `https://ibb.co/Y7fDQCY6`, c
 
 ## 9. Domínio regulamentar 2025
 
-O SAE atende nesta fase exclusivamente o CTG Rodeio dos Palmares. O cadastro regulamentar separa torneios, entidades/piquetes, atletas, vínculos, habilitações por modalidade, equipes e integrantes. Atletas são identificados por nome e telefone, podem disputar todas as modalidades pela mesma entidade e são controlados por toggles. A composição é validada conforme a modalidade.
+O SAE atende nesta fase exclusivamente o CTG Rodeio dos Palmares. O cadastro unificado cria a entidade/piquete, identifica o Capataz e recebe até cinco atletas usando somente seus nomes. Cada nome possui sua própria seleção de modalidades e papel Titular/Reserva. As fichas são formadas automaticamente e não exigem a quantidade oficial de integrantes, atendendo às equipes locais incompletas.
 
 O ranking possui dois níveis. Resultados esportivos permanecem nas partidas e classificações de modalidade. Somente classificações homologadas alimentam o Troféu Eficiência pela escala 10, 8, 6, 5, 4 e 2 pontos. WO, ausência, desistência, desclassificação e não conclusão valem zero. O desempate geral considera primeiros, segundos e terceiros lugares, e reaberturas exigem motivo e auditoria.
 
 ## 10. Frontend operacional
 
-A SPA Vue usa sidebar responsiva e rotas hash para Inscrições, Modalidades, Ranking por Modalidade, Ranking Geral e Administração. Inscrições possuem modal em três etapas, filtros locais, paginação de 25 registros, edição, inativação, mudança de entidade e toggles das seis modalidades. Cada habilitação registra se o atleta participa como titular ou reserva, e a formação da equipe valida esses papéis contra o regulamento. O cadastro da entidade identifica o Capataz (responsável) e seu celular. Ações de gravação usam um bloqueio de envio no frontend para rejeitar cliques repetidos enquanto a operação está em andamento. Cada esporte possui identidade cromática fixa: Tava cinza, Bocha Campeira vermelha, Tetarfe amarela, Truco verde, Truco Cego azul e Bocha 48 índigo.
+A SPA Vue usa sidebar responsiva e rotas hash para Inscrições, Modalidades, Ranking por Modalidade, Ranking Geral e Administração. A Nova Inscrição possui quatro etapas: entidade e Capataz; até cinco nomes; modalidades por nome; revisão e gravação conjunta. A Administração oferece um reset protegido pela frase `RESETAR EVENTO`, que limpa os dados operacionais e abre um evento vazio. Ações de gravação usam bloqueio de envio para rejeitar cliques repetidos. Cada esporte possui identidade cromática fixa: Tava cinza, Bocha Campeira vermelha, Tetarfe amarela, Truco de Amostra verde, Truco Cego azul e Bocha 48 índigo.
+
+## 11. Arquivos locais e implantação GAS
+
+`tests/run-tests.cjs`, `package.json`, README e demais arquivos de desenvolvimento são exclusivamente locais. O `.claspignore` publica somente os arquivos `.gs`, `Index.html` e `appsscript.json`; o teste Node nunca deve ser criado ou copiado no editor do Apps Script, pois utiliza `require`, indisponível no GAS.
